@@ -1,0 +1,37 @@
+{
+  "name": "ts-torrent-cli",
+  "version": "0.1.0",
+  "description": "A CLI torrent client written in TypeScript",
+  "author": "ChrisYohann",
+  "scripts": {
+    "build": "tsc",
+    "test": "./node_modules/.bin/mocha --compilers ts:ts-node/register test/**/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.1.2",
+    "@types/mocha": "^5.0.0",
+    "ts-node": "^5.0.1",
+    "typescript": "^2.8.1"
+  },
+  "dependencies": {
+    "@types/mkdirp": "^0.5.2",
+    "@types/node": "^9.6.1",
+    "@types/ramda": "^0.25.21",
+    "@types/tmp": "0.0.33",
+    "@types/underscore": "^1.8.8",
+    "@types/winston": "^2.3.8",
+    "chai": "^4.1.2",
+    "combined-stream2": "^1.1.2",
+    "dateformat": "^3.0.3",
+    "mkdirp": "^0.5.1",
+    "mocha": "^5.0.5",
+    "monet": "^0.8.10",
+    "queue": "^4.4.2",
+    "ramda": "^0.25.0",
+    "tmp": "0.0.33",
+    "underscore": "^1.9.0",
+    "util": "^0.10.3",
+    "walk": "^2.3.13",
+    "winston": "^2.4.1"
+  }
+}
