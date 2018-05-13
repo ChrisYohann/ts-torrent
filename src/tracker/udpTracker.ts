@@ -41,7 +41,6 @@ export class UDPTracker extends Tracker {
         self.announce();
     });
 
-    this.server = server;
     server.bind()
   }
 
