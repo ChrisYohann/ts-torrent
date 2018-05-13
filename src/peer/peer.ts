@@ -206,7 +206,7 @@ const receiveCancel = (index: number, begin: number, length: number) => {
     //self.torrent.cancel(index, begin, length)
 };
 
-const createBlockRequests = (pieceLength, blockLength){
+const createBlockRequests = (pieceLength: number, blockLength: number): {begin: number, length: number}[] => {
     const beginValues = _.range(0, pieceLength, blockLength);
     const blockValues = _.map(beginValues, (blockBegin, index) => {
         if (index == beginValues.length - 1)
