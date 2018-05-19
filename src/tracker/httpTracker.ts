@@ -6,10 +6,11 @@ import * as util from 'util'
 import * as BencodeUtils from '../bencode/utils'
 import { BencodeToken, BencodeDict} from '../bencode/types'
 import Tracker from './tracker'
+import Torrent from '../Torrent/torrent';
 
 export class HTTPTracker extends Tracker {
 
-    constructor(url: string, torrent){
+    constructor(url: string, torrent: Torrent){
         super(url, torrent)
     }
     
@@ -18,16 +19,16 @@ export class HTTPTracker extends Tracker {
         logger.info(`Sending ${event} to ${self.trackerURL}`);
         const httpRequest = this.prepareHTTPRequest(event);
         logger.verbose(httpRequest);
-        http.get(httpRequest, function (response) {
+        http.get(httpRequest, (response) => {
             logger.verbose("Response Status Code : " + response.statusCode);
             logger.verbose("Response Status Message : " + response.statusMessage);
             let responseBody = '';
     
-            response.on("data", function (chunk) {
+            response.on("data",  (chunk) => {
                 responseBody += chunk
             });
     
-            response.on("end", function (){
+            response.on("end",  () => {
                 const bufferedData = Buffer.from(responseBody);
                 BencodeUtils.decode(bufferedData).cata(
                     (err: Error) => {
@@ -50,14 +51,13 @@ export class HTTPTracker extends Tracker {
     }
 
     private prepareHTTPRequest(event: string): string {
-        const torrentInfos = this.torrent;
         const requestParams = {
-            info_hash: torrentInfos["infoHash"],
+            info_hash: this.torrent.infoHash,
             peer_id: Buffer.allocUnsafe(20),
-            port: torrentInfos["listeningPort"],
-            uploaded: torrentInfos["_uploaded"],
-            downloaded: torrentInfos["_downloaded"],
-            left: torrentInfos["_left"],
+            port: this.torrent.port,
+            uploaded: this.torrent.uploaded,
+            downloaded: this.torrent.downloaded,
+            left: this.torrent.size - this.torrent.completed,
             compact: 1,
             event
         };

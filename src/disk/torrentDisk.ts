@@ -216,6 +216,10 @@ export default class TorrentDisk {
         return this.bitfield
     }
 
+    async verify(): Promise<Buffer> {
+        return undefined
+    }
+
     clear(): void {
         
     }

@@ -5,6 +5,7 @@ import * as Utils from '../utils/utils'
 import * as util from 'util'
 import * as url from 'url'
 import Tracker from './tracker'
+import Torrent from '../Torrent/torrent';
 
 const compact2string = require("compact2string");
 
@@ -20,7 +21,7 @@ export class UDPTracker extends Tracker {
   server: dgram.Socket
 
 
-  constructor(announceURL: string, torrent){
+  constructor(announceURL: string, torrent: Torrent){
     super(announceURL, torrent)
     this.transactionID = crypto.randomBytes(4)
     const urlObject: url.UrlWithStringQuery = url.parse(announceURL)
@@ -92,7 +93,7 @@ export class UDPTracker extends Tracker {
        requestMessage.write("CLI Torrent Client", 36, 20);
        const amountDownloadedBuffer = Buffer.from(Utils.decimalToHexString(this.torrent.downloaded), "hex");
        amountDownloadedBuffer.copy(requestMessage, 56 + 8 - amountDownloadedBuffer.length);
-       const amountLeftBuffer = Buffer.from(Utils.decimalToHexString(this.torrent.left), "hex");
+       const amountLeftBuffer = Buffer.from(Utils.decimalToHexString(this.torrent.size - this.torrent.completed), "hex");
        amountLeftBuffer.copy(requestMessage, 64 + 8 - amountLeftBuffer.length);
        const amountUploadedBuffer = Buffer.from(Utils.decimalToHexString(this.torrent.uploaded), "hex");
        amountUploadedBuffer.copy(requestMessage, 72 + 8 - amountUploadedBuffer.length);

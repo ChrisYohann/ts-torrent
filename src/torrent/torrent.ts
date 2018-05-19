@@ -2,12 +2,13 @@ import { TorrentDict } from './types'
 import { EventEmitter } from 'events'
 import TorrentDisk from '../disk/torrentDisk'
 import Tracker from '../tracker/tracker'
-import HTTPTracker from '../tracker/httpTracker'
-import UDPTracker from '../tracker/udpTracker'
+import { HTTPTracker } from '../tracker/httpTracker'
+import { UDPTracker } from '../tracker/udpTracker'
 import PeerManager from '../peer/peerManager'
 import Peer from '../peer/peer'
 import * as BencodeUtils from '../bencode/utils'
 import { logger } from '../logging/logger'
+import * as Utils from '../utils/utils'
 
 const udpAddressRegex = /^(udp:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
 const httpAddressRegex = /^(http:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
@@ -38,7 +39,7 @@ export default class Torrent extends EventEmitter {
     activeTracker: Tracker
     trackers: string[]
 
-    async constructor(meta: TorrentDict, filepath: string){
+    constructor(meta: TorrentDict, filepath: string){
         super()
         this.metadata = meta
         this.name = meta.info.name
@@ -58,32 +59,47 @@ export default class Torrent extends EventEmitter {
     }
 
     start(){
-        let self = this ;
-        console.log(this);
+        let self = this
         if(this.trackers.length <= 0){
             logger.error("No valid tracker found. Aborting.");
         } else {
-            this.activeTracker = getHTTPorUDPTracker.call(this, self.trackers[self.actualTrackerIndex]);
-            this.activeTracker.on("peers", function(peerList){
-                peerList.forEach(function(peer){
+            this.activeTracker = this.getHTTPorUDPTracker(this.trackers[this.actualTrackerIndex]);
+            this.activeTracker.on("peers", (peerList: string[]) => {
+                peerList.forEach((peer: string) => {
                   self.lastKnownPeers.push(peer)
                 });
-                if(self["_left"] != 0){
-                    self.seekForPeers();
+                if(this.size - this.completed > 0){
+                    this.seekForPeers();
                 }
             });
             self.activeTracker.announce("started");
         }
     }
 
-    getHTTPorUDPTracker(trackerURL: string){
+    stop(callback) {
+        logger.info(`Invoking Stop for ${this.name} torrent.`)
+        let message = `${this.name} Torrent Successfully stopped.`
+        callback(message)
+    }
+
+    seekForPeers(){
+        let nbPeersToAdd = MAX_ACTIVE_PEERS - this.activePeers.length
+    }
+
+    getHTTPorUDPTracker(trackerURL: string) {
         let self = this;
         if(trackerURL.match(httpAddressRegex)){
-            return new HTTPTracker(self, trackerURL);
+            return new HTTPTracker(trackerURL, this)
         } else if(trackerURL.match(udpAddressRegex)){
-            return new UDPTracker(self, trackerURL);
+            return new UDPTracker(trackerURL, this)
         } else {
             logger.error("No valid Protocol for ${trackerURL} found. Aborting.");
         }
-      };
+    }
+
+    containsPiece(index: number) {
+        return Utils.bitfieldContainsPiece(this.bitfield, index);
+    }
+
+    
 }
