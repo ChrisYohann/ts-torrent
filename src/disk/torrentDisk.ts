@@ -27,11 +27,11 @@ const createCustomInfoDictFromMetaFile = (dict: TorrentDict, savepath: string): 
             const complete_path: string = path_module.join(savepath, ...path)
             return {length, path: complete_path}
         })
-        return new CustomInfoDictCommon(savepath, modified_files, info_dict['piece length'], info_dict['pieces'])
+        return new CustomInfoDictCommon(dict.info.name, savepath, modified_files, info_dict['piece length'], info_dict['pieces'])
     } else {
         const complete_path: string = path_module.join(savepath, info_dict.name)
         const modified_files = [{length: info_dict.length, path : complete_path}]
-        return new CustomInfoDictCommon(savepath, modified_files, info_dict['piece length'], info_dict['pieces'])
+        return new CustomInfoDictCommon(dict.info.name, savepath, modified_files, info_dict['piece length'], info_dict['pieces'])
     }
 }
 
@@ -122,7 +122,13 @@ export default class TorrentDisk {
 
     async initFiles(fileInfosWithoutDescriptor: {path: string, length: number}[]): Promise<FileInfo[]> {
         try {
-            await mkdirpPromised(this.savepath)
+            try {
+                await mkdirpPromised(this.savepath)
+            } catch (err){
+                if (err.code !== 'EEXIST'){
+                    Promise.reject(err)
+                }
+            }
             const fileInfos = await R.map(async ({path, length}): Promise<FileInfo> => {
             logger.verbose(`Opening File at ${path}. Length : ${length} bytes`)
             const fileInfo: FileInfo = await openOrCreateFile(path, length)
@@ -154,6 +160,8 @@ export default class TorrentDisk {
 
             let bytesPieceRemaining = lengthPiece
             while(bytesPieceRemaining > 0){
+                console.log(files)
+                console.log(fileIndex)
                 const {fd, path, length} = files[fileIndex]
                 piece.addSeekPointer(new SeekPointer(fd, fileOffset, pieceOffset, length))
                 if(bytesPieceRemaining > length - fileOffset){
@@ -221,7 +229,9 @@ export default class TorrentDisk {
             const isPieceCompleted: boolean = await piece.passSha1Verification()
             return isPieceCompleted ? piece.length : 0
         }))
-        return R.sum(blocksCompleted)
+        const completed: number = R.sum(blocksCompleted)
+        this.completed = completed
+        return completed
     }
 
     clear(): void {

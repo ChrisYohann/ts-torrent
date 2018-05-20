@@ -5,6 +5,7 @@ export class CustomInfoDictCommon {
     piece_length : number
     pieces : Buffer
     name : string
+    savepath: string
     totalSize : number
     nbPieces: number
     files : {
@@ -12,8 +13,9 @@ export class CustomInfoDictCommon {
         "path" : string
     }[]
 
-    constructor(name: string, files: {"length": number, "path": string}[], piece_length: number, pieces: Buffer){
+    constructor(name: string, savepath, files: {length: number, path: string}[], piece_length: number, pieces: Buffer){
         this.name = name
+        this.savepath = savepath
         this.files = files
         this.piece_length = piece_length
         this.pieces = pieces

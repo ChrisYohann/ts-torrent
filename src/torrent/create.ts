@@ -9,8 +9,8 @@ import {TorrentProperties} from './types'
 export default async (properties: TorrentProperties): Promise<Either<Error, BencodeDict>> => {
     const {filepath, announce, comment} = properties
     const announce_list = (() => {
-        if (properties['announce_list'].length > 0){
-          return properties['announce_list'].split(';').map((element) => element.split(' '))
+        if (properties.announce_list.length > 0){
+          return properties.announce_list.split(';').map((element) => element.split(' '))
         } else {
           return []
         }

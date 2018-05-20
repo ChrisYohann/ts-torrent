@@ -1,41 +1,45 @@
-const CLI = require('clui');
-const clc = require('cli-color');
-const NB_COLUMNS = process.stdout.columns || 80 ;
+const CLI = require('clui')
+const clc = require('cli-color')
+const NB_COLUMNS = process.stdout.columns || 80 
 
-const util = require('util');
-const EventEmitter = require('events').EventEmitter;
+const util = require('util')
+const EventEmitter = require('events').EventEmitter
 
-let Line = CLI.Line;
-let LineBuffer = CLI.LineBuffer;
-let Progress = CLI.Progress;
+let Line = CLI.Line
+let LineBuffer = CLI.LineBuffer
+let Progress = CLI.Progress
 
-let TorrentLine = module.exports = function(torrent){
-    console.log("Creating TorrentLine");
-    console.log(torrent);
-    let self = this ;
-    EventEmitter.call(this);
-    this.torrent = torrent;
-    this.content = this.updateLineContent();
-    this.torrent.torrent.on("change", function(torrent){
-        self.content = self.updateLineContent();
-        self.emit("torrentChange", self.content);
-    });
+export class TorrentLine {
+    constructor(torrent){
+        console.log('Creating TorrentLine')
+        this.torrent = torrent
+        this.downloadedAmountFromLastSecond = 0
+    }
 
+    getContent(){
+        this.downloadedAmountFromLastSecond = this.torrent.completed - this.downloadedAmountFromLastSecond
+        const result = new Line()
+            .padding(4)
+            .column(this.torrent.name,  Math.ceil(0.25*NB_COLUMNS))
+            .column(new Progress(Math.ceil(0.20*NB_COLUMNS)).update(this.torrent.completed, this.torrent.size))
+            .column(`${sizeFormatter(this.downloadedAmountFromLastSecond)}/s`, Math.ceil(0.15*NB_COLUMNS))
+            .column(this.torrent.activePeers.length, Math.ceil(0.15*NB_COLUMNS))
+            .fill()
+        return result
+    }
+}
 
-};
-
-util.inherits(TorrentLine, EventEmitter);
-
-TorrentLine.prototype.updateLineContent = function(){
-   let torrent_infos = this.torrent.torrent;
-   let result = new Line()
-        .padding(4)
-        .column(torrent_infos["name"], Math.ceil(0.25*NB_COLUMNS))
-        .column(new Progress(Math.ceil(0.20*NB_COLUMNS)).update(torrent_infos["_completed"], torrent_infos["_size"]))
-        .column('Speed', Math.ceil(0.15*NB_COLUMNS))
-        .column('0', Math.ceil(0.15*NB_COLUMNS))
-        .fill();
-  return result;
-
-
-};
+const sizeFormatter = (value) => {
+    if(value < 1024){
+        return value + " bytes" 
+    } else if((value/1024)<=1024){
+        const ko = value/1024 
+        return ko + " Kb" 
+    } else if(value/(1024*1024) <= 1024){
+        const mo = value/(1024*1024.0)
+        return Number(mo.toFixed(2)) + " Mb" 
+    } else{
+        const go = value/(1024*1024*1024.0)
+        return Number(go.toFixed(2)) + " Gb" 
+    }
+}

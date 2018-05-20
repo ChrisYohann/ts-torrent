@@ -1,7 +1,7 @@
 export interface TorrentProperties {
     filepath: string
     announce: string
-    announce_list: string
+    announce_list : string
     comment: string
 }
 

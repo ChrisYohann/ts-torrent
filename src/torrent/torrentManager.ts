@@ -10,6 +10,7 @@ import { BencodeDict, BencodeToken } from '../bencode/types'
 import { Either, Maybe } from 'monet'
 import { convertBencodeDictInTorrentDict } from './torrentDictUtils'
 import { decodeFile } from '../bencode/utils'
+import * as events from '../events/events'
 
 export class TorrentManager extends EventEmitter {
   port: number
@@ -21,11 +22,15 @@ export class TorrentManager extends EventEmitter {
   }
 
   pushTorrent(torrent: Torrent){
-    const duplicatedTorrents = R.filter((existingTorrent: Torrent) => existingTorrent.infoHash.equals(torrent.infoHash))
+    const duplicatedTorrents: Torrent[] = R.filter(
+      (existingTorrent: Torrent) => existingTorrent.infoHash.equals(torrent.infoHash),
+      this.torrents
+    )
     if (duplicatedTorrents.length > 0){
       logger.warn(`Torrent already existing as ${duplicatedTorrents[0].name}`)
     } else {
       this.torrents.push(torrent)
+      this.emit(events.MANAGER_TORRENT_ADDED, torrent)
       torrent.start()
     }
   }
@@ -40,7 +45,7 @@ export class TorrentManager extends EventEmitter {
       })
     } else {
       logger.info("No configuration file found")
-      this.emit("loadingComplete", this.torrents)
+      this.emit(events.MANAGER_LOADING_COMPLETE, this.torrents)
     }
   }
   
@@ -98,7 +103,7 @@ export class TorrentManager extends EventEmitter {
     this.torrents[torrentIndex].stop((message) => {
       logger.info(message)
       this.torrents.splice(torrentIndex, 1)
-      this.emit("torrentDeleted", torrentIndex)
+      this.emit(events.MANAGER_TORRENT_DELETED, torrentIndex)
     })
   }
 

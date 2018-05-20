@@ -14,6 +14,7 @@ import * as events from '../events/events'
 import * as net from 'net'
 import * as Handshake from '../peer/handshake'
 import { Maybe } from 'monet'
+import * as path from 'path'
 
 const udpAddressRegex = /^(udp:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
 const httpAddressRegex = /^(http:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
@@ -57,13 +58,14 @@ export default class Torrent extends EventEmitter {
         this.mainTrackerURL = meta.announce
         this.otherTrackersURLs = meta["announce-list"]
         this.infoHash = BencodeUtils.encode(meta.info)
-        this.disk = new TorrentDisk(meta, filepath)
+        this.disk = new TorrentDisk(meta, path.dirname(filepath))
         this.pieceRequestGenerator = PeerManager.askPeersForPieces(this)()
     }
 
     async init(){
         //this.initTracker()
-        //this.disk.verify()
+        console.log('VERIFYING')
+        await this.disk.init().then(this.disk.verify)
     }
 
     start(){
