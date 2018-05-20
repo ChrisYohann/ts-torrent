@@ -22,6 +22,8 @@ const MAX_ACTIVE_PEERS = 5 ;
 export default class Torrent extends EventEmitter {
     metadata: TorrentDict
     name: string
+    filepath: string
+
     mainTrackerURL: string
     otherTrackersURLs: string[][]
     infoHash: Buffer
@@ -51,11 +53,17 @@ export default class Torrent extends EventEmitter {
         super()
         this.metadata = meta
         this.name = meta.info.name
+        this.filepath = filepath
         this.mainTrackerURL = meta.announce
         this.otherTrackersURLs = meta["announce-list"]
         this.infoHash = BencodeUtils.encode(meta.info)
         this.disk = new TorrentDisk(meta, filepath)
         this.pieceRequestGenerator = PeerManager.askPeersForPieces(this)()
+    }
+
+    async init(){
+        //this.initTracker()
+        //this.disk.verify()
     }
 
     start(){
@@ -71,10 +79,10 @@ export default class Torrent extends EventEmitter {
             })
             this.activeTracker.announce("started")
             this.on(events.HAVE, (index: number) => {
-                this.askedPieces = R.pipe(
-                    R.indexOf(index),
-                    R.remove()
-                )(this.askedPieces)
+                this.askedPieces = R.remove(
+                    R.indexOf(index)(this.askedPieces),
+                    1,
+                    this.askedPieces)
                 this.lookForNewPieces()
             })
         }
@@ -92,29 +100,30 @@ export default class Torrent extends EventEmitter {
     }
 
     addPeer(peer: Peer): void {
-        this.activePeers = R.append(this.activePeers, peer)
+        this.activePeers = R.append(peer, this.activePeers)
         this.lookForNewPieces()
     }
 
-    async lookForNewPeers(peerList: string): Peer[]{
+    async lookForNewPeers(peerList: string[]): Promise<Peer[]> {
         let self = this
         const nbPeersToAdd: number = MAX_ACTIVE_PEERS - this.activePeers.length
-        const unknownPeers: string[] = R.pipe(
-            R.filter((newPeerAddress: string) => R.filter((activePeer: Peer) => activePeer.remoteAddress !== newPeerAddress)(this.activePeers)),
-            R.take(nbPeersToAdd)
-        )(peerList)
+        const unknownPeers: string[] = R.filter((newPeerAddress: string) => {
+            return R.all((activePeer: Peer) => activePeer.remoteAddress !== newPeerAddress, this.activePeers)
+        }, peerList)
+        const unknownPeersTruncated: string[] = R.take(nbPeersToAdd, unknownPeers)
 
         const maybePeers: Maybe<Peer>[] = await Promise.all(R.map(async (unknownPeerAddress: string) => {
-            const [host, port]: [string, string] = unknownPeerAddress.split(':')
-            const peer: Maybe<Peer> = await getPeer(this, host, parseInt(port))
+            const [host, port] = unknownPeerAddress.split(':')
+            const peer: Maybe<Peer> = await getPeer(this, host, port)
             return peer
-        })(unknownPeers))
+        })(unknownPeersTruncated))
 
-        const newPeers: Peer[] = R.pipe(
-            R.filter((maybePeer: Maybe<Peer>) => maybePeer.isSome(), maybePeers),
-            R.map((maybePeer: Maybe<Peer>) => maybePeer.some()),
+        const newPeers: Peer[] = (() => {
+            const somePeers = R.filter<Maybe<Peer>>((maybePeer: Maybe<Peer>) => maybePeer.isSome())(maybePeers)
+            const peers: Peer[] = R.map((maybePeer: Maybe<Peer>) => maybePeer.some())(maybePeers)
             R.forEach((peer: Peer) => peer.start())
-        )(maybePeers)
+            return peers
+        })()
         
         return newPeers
     }
@@ -123,7 +132,7 @@ export default class Torrent extends EventEmitter {
         const {value, done} = this.pieceRequestGenerator.next()
         if (!done){
             R.forEach(({peer, pieceIndex}: {peer: Peer, pieceIndex: number}) => {
-                peer.requestPiece(pieceIndex)
+                peer.sendRequest(pieceIndex)
             })(value)
         }
     }
@@ -159,7 +168,7 @@ export default class Torrent extends EventEmitter {
         const {bytesWritten, isPieceCompletedAndValid} = await this.disk.write(index, begin, block)
         this.completed += bytesWritten
         if(isPieceCompletedAndValid){
-            self.emit(events.HAVE, pieceIndex)
+            this.emit(events.HAVE, index)
         }
         return isPieceCompletedAndValid
     }
@@ -198,6 +207,6 @@ const getPeer = (torrent: Torrent, host: string, port: string): Promise<Maybe<Pe
             socket.write(handshake, 'utf8', () => {
             logger.verbose(`Handshake sent to ${socket.remoteAddress}`)
             })
-        }    
-    }  
-})
+        })    
+    }) 
+}

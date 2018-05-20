@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import {BencodeDict, BencodeList, BencodeToken, BencodeInt, BencodeString, createBencodeToken} from './types'
 import {logger} from '../logging/logger'
 import {Either, Right, Left} from 'monet'
+import * as util from 'util'
 
 
 //UTF-8 to Hex characters
@@ -12,6 +13,8 @@ import {Either, Right, Left} from 'monet'
  */
 
 type PositionIncrement = number
+
+const readFilePromised = util.promisify(fs.readFile)
 
 const numberIsInteger = (str: string): boolean => {
     const number = parseInt(str, 10);
@@ -229,7 +232,7 @@ export const encode_to_file = (token: BencodeToken|any[]|number|string|Buffer|Ob
     
 }
 
-export const decode_file = (file_path: string): Either<Error, BencodeToken> => {
-    const data: Buffer = fs.readFileSync(file_path)
+export const decodeFile = async (filepath: string): Promise<Either<Error, BencodeToken>> => {
+    const data: Buffer = await readFilePromised(filepath)
     return decode(data)
 }
