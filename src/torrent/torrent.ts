@@ -101,6 +101,7 @@ export default class Torrent extends EventEmitter {
 
     addPeer(peer: Peer): void {
         this.activePeers = R.append(peer, this.activePeers)
+        peer.start()
         this.lookForNewPieces()
     }
 

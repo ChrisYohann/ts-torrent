@@ -1,61 +1,76 @@
 #!/usr/bin/env node
 
-let logger = require("./log");
-let net = require("net");
-let UI = require("./UI/ui");
-let TorrentManager = require("./peer/torrentManager");
-let HandshakeParser = require("./peer/handshake");
-const _ = require("underscore");
+import Torrent from './Torrent/torrent';
+import { MANAGER_TORRENT_ADDED, MANAGER_TORRENT_DELETED, MANAGER_ERROR_PARSING_TORRENT, UI_NEW_TORRENT_REQUEST, UI_OPEN_TORRENT_REQUEST, UI_DELETE_TORRENT_REQUEST } from './events/events';
 
-const handshakeParser = new HandshakeParser();
+const logger = require('./logging/logger')
+const net = require('net');
+const UI = require('./ui/ui');
+const TorrentManager = require('./torrent/torrentManager');
+const Peer = require('./peer/peer')
+const { parse, create } = require('./peer/handshake');
+const _ = require('underscore');
+const { EventEmitter } = require('events');
+const util = require('util');
+const events = require('./events/events')
 
-const EventEmitter = require("events");
-const util = require("util");
+const CONF_FILE = 'conf/torrents_list.json';
 
-const CONF_FILE = "conf/torrents_list.json";
-
-let MIN_BITTORENT_PORT = 6881;
-let MAX_BITTORENT_PORT = 6889;
-let app_port = MIN_BITTORENT_PORT;
+const MIN_BITTORENT_PORT = 6881;
+const MAX_BITTORENT_PORT = 6889;
+const app_port = MIN_BITTORENT_PORT;
 
 
-function getPort(callback){
-    let port = app_port;
+const getPort = (server) => (callback) => {
+    const port = app_port;
     app_port += 1;
     logger.verbose(`Attempting to bind at port ${port} ...`);
-
-    let server = this.server;
 
     server.listen(port, function(){
       logger.info(`Server listening at ${port}`);
       callback(port);
     });
 
-    server.on("error", function(err){
+    server.on('error', function(err){
         logger.debug(err);
         logger.error(`Unable to Bind at port ${port}. Trying next`);
         getPort(callback)
     });
 }
 
-let connectionListener = function(socket){
-  let self = this;
-  logger.verbose(`Incoming Connection from ${socket.remoteAddress}`);
-  socket.once("data", function(chunk){
-    handshakeParser.parse(chunk).then(function(parsedHandshake){
+const connectionListener = (torrentManager) => (socket) => {
+  logger.verbose(`Incoming Connection from ${socket.remoteAddress}`)
+  socket.once('data', async (chunk) => {
+    const {peerId, infoHash} = await parse(chunk)
+    const torrentsWithSameInfoHash = R.filter((torrent) => infoHash.equals(torrent.infoHash))(torrentManager.torrents)
+    if (torrentsWithSameInfoHash.length == 0){
+      logger.verbose('None valid Info Hash corresponding was found. Aborting Connection')
+      socket.end()
+    } else {
+      const torrent = torrentsWithSameInfoHash[0];
+      logger.verbose(`Peer ${socket.remoteAddress} is connecting for Torrent : ${torrent.name}`);
+      const handshakeResponse = handshakeParser.create(infoHash, null);
+      const peer = new Peer(torrent, socket, peerId)
+      torrent.addPeer(peer)
+      socket.write(handshakeResponse);
+    }
+
+
+
+    parse(chunk).then(function(parsedHandshake){
       const torrentsWithSameInfoHash = _.filter(self.torrents, function(torrent){
-        return torrent["infoHash"].equals(parsedHandshake["infoHash"]);
+        return torrent['infoHash'].equals(parsedHandshake['infoHash']);
       });
       if (torrentsWithSameInfoHash.length == 0){
-        logger.verbose("None valid Info Hash corresponding was found. Aborting Connection");
+        logger.verbose('None valid Info Hash corresponding was found. Aborting Connection');
         socket.end();
       } else {
           const torrent = torrentsWithSameInfoHash[0];
-          logger.verbose(`Peer ${socket.remoteAddress} is connecting for Torrent : ${torrent["torrent"]["name"]}`);
-          const handshakeResponse = handshakeParser.create(torrent["infoHash"], self.peerId);
+          logger.verbose(`Peer ${socket.remoteAddress} is connecting for Torrent : ${torrent['torrent']['name']}`);
+          const handshakeResponse = handshakeParser.create(torrent['infoHash'], self.peerId);
           const peer = (function(){
-            if("peerId" in parsedHandshake){
-              return new Peer(torrent, socket, parsedHandshake["peerId"]);
+            if('peerId' in parsedHandshake){
+              return new Peer(torrent, socket, parsedHandshake['peerId']);
             } else {
               return new Peer(torrent, socket, null);
             }
@@ -63,13 +78,37 @@ let connectionListener = function(socket){
           socket.write(handshakeResponse);
       }
     }).catch(function(failure){
-      logger.error("Error in Parsing Handshake. Aborting Connection");
+      logger.error('Error in Parsing Handshake. Aborting Connection');
       socket.end();
     });
   });
 };
 
-let App = function App(){
+export class App extends EventEmitter {
+  constructor(){
+    super()
+    this.server = net.createServer(connectionListener.bind(this))
+  }
+
+  start() {
+    const self = this
+    this.torrentManager = new TorrentManager(app_port)
+    initTorrentManagerListeners.call(this)
+    this.torrentManager.on(events.MANAGER_LOADING_COMPLETE, () => {
+      self.ui = new UI(self)
+      initUIListeners.call(self)
+      self.loadUI()
+    })
+    self.torrentManager.loadTorrents(CONF_FILE)
+  }
+
+  loadUI() {
+    logger.info('Drawing Interface');
+    this.ui.drawInterface();
+  }
+}
+
+const App = function App(){
     EventEmitter.call(this);
     this.ui = undefined;
     this.torrentManager = undefined;
@@ -77,76 +116,55 @@ let App = function App(){
     this.server = net.createServer(connectionListener.bind(this));
 };
 
-util.inherits(App, EventEmitter);
-
-App.prototype.start = function(){
-    this.torrentManager = new TorrentManager(app_port);
-    initTorrentManagerListeners.call(this);
-    let self = this ;
-    self.torrentManager.on("loadingComplete", function(torrents){
-        self.torrents = torrents;
-        self.ui = new UI(self);
-        initUIListeners.call(self);
-        self.loadUI();
-    });
-    self.torrentManager.loadTorrents(CONF_FILE);
-};
-
-App.prototype.loadUI = function(){
-    logger.info("Drawing Interface");
-    this.ui.drawInterface();
-};
-
-let newTorrentFromUIListener = function(torrentForm){
-  let self = this;
+const newTorrentFromUIListener = function({torrentForm}){
+  const self = this;
   self.torrentManager.addNewTorrent(torrentForm);
 };
 
-let openTorrentFromUIListener = function(torrentForm){
-  let self = this;
+const openTorrentFromUIListener = function(torrentForm){
+  const self = this;
   self.torrentManager.openTorrent(torrentForm);
 }
 
-let deleteTorrentFromUIListener = function(torrentIndex){
-  let self = this;
-  self.torrentManager.deleteTorrent(torrentIndex);
+const deconsteTorrentFromUIListener = function(torrentIndex){
+  const self = this;
+  self.torrentManager.deconsteTorrent(torrentIndex);
 }
 
-let newTorrentFromManagerListener = function(torrentObj){
-  let self = this;
+const newTorrentFromManagerListener = function(torrentObj){
+  const self = this;
   if(torrentObj){
-    self.emit("newTorrent", torrentObj);
+    self.emit('newTorrent', torrentObj);
   } else {
     self.ui.drawInterface();
   }
 };
 
-let deletedTorrentFromManagerListener = function(torrentIndex){
-  let self = this;
-  self.emit("deletedTorrent", torrentIndex);
+const deconstedTorrentFromManagerListener = function(torrentIndex){
+  const self = this;
+  self.emit('deconstedTorrent', torrentIndex);
 }
 
-let errorParsingTorrentFromManagerListener = function(){
-  let self = this;
+const errorParsingTorrentFromManagerListener = function(){
+  const self = this;
   self.ui.drawInterface();
 }
 
-let initTorrentManagerListeners = function(){
-  let self = this;
-  self.torrentManager.on("torrentAdded", newTorrentFromManagerListener.bind(self));
-  self.torrentManager.on("torrentDeleted", deletedTorrentFromManagerListener.bind(self));
-  self.torrentManager.on("errorParsingTorrent", errorParsingTorrentFromManagerListener.bind(self));
+const initTorrentManagerListeners = function(){
+  const self = this;
+  self.torrentManager.on(MANAGER_TORRENT_ADDED, newTorrentFromManagerListener.bind(self));
+  self.torrentManager.on(MANAGER_TORRENT_DELETED, deconstedTorrentFromManagerListener.bind(self));
+  self.torrentManager.on(MANAGER_ERROR_PARSING_TORRENT, errorParsingTorrentFromManagerListener.bind(self));
 };
 
-let initUIListeners = function(){
-  let self = this;
-  self.ui.on("newTorrentRequest", newTorrentFromUIListener.bind(self));
-  self.ui.on("openTorrentRequest", openTorrentFromUIListener.bind(self));
-  self.ui.on("deleteTorrentRequest", deleteTorrentFromUIListener.bind(self));
+const initUIListeners = function(){
+  const self = this;
+  self.ui.on(UI_NEW_TORRENT_REQUEST, newTorrentFromUIListener.bind(self));
+  self.ui.on(UI_OPEN_TORRENT_REQUEST, openTorrentFromUIListener.bind(self));
+  self.ui.on(UI_DELETE_TORRENT_REQUEST, deconsteTorrentFromUIListener.bind(self));
 };
 
-
-let app = new App();
-getPort.call(app, function(){
+const app = new App();
+getPort.call(app, () => {
     app.start();
 });

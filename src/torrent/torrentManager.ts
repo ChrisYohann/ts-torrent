@@ -4,16 +4,12 @@ import * as fs from 'fs'
 import { EventEmitter } from 'events'
 import Torrent from '../torrent/torrent'
 import * as R from 'ramda'
-import { TorrentProperties, TorrentDict } from '../torrent/types'
-import createTorrent from '../torrent/create'
+import { TorrentProperties, TorrentDict } from './types'
+import createTorrent from './create'
 import { BencodeDict, BencodeToken } from '../bencode/types'
 import { Either, Maybe } from 'monet'
-import { convertBencodeDictInTorrentDict } from '../torrent/torrentDictUtils'
+import { convertBencodeDictInTorrentDict } from './torrentDictUtils'
 import { decodeFile } from '../bencode/utils'
-
-let CreateTorrent = require('../newTorrent')
-let Encode = require("../Bencode/Encode")
-const _ = require("underscore")
 
 export class TorrentManager extends EventEmitter {
   port: number

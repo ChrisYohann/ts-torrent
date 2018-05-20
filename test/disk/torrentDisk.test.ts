@@ -107,8 +107,8 @@ describe('### TorrentDisk Tests ###', () => {
     })
 
     it('it should compute the right total size', () => {
-      expect(torrentDiskMultipleFiles.info_dictionary.totalSize).to.eql(40)
-      expect(torrentDiskSingleFile.info_dictionary.totalSize).to.eql(10)      
+      expect(torrentDiskMultipleFiles.infoDictionary.totalSize).to.eql(40)
+      expect(torrentDiskSingleFile.infoDictionary.totalSize).to.eql(10)      
     })
 
     it('should init Files properly', async () => {

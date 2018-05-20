@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@types/async": "^2.0.49",
+    "@types/dateformat": "^1.0.1",
     "@types/mkdirp": "^0.5.2",
     "@types/node": "^9.6.1",
     "@types/ramda": "^0.25.21",
@@ -23,6 +24,7 @@
     "@types/winston": "^2.3.8",
     "async": "^2.6.0",
     "chai": "^4.1.2",
+    "colors": "^1.2.5",
     "combined-stream2": "^1.1.2",
     "compact2string": "^1.4.0",
     "dateformat": "^3.0.3",
