@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 
 import Torrent from './Torrent/torrent';
-import { MANAGER_TORRENT_ADDED, MANAGER_TORRENT_DELETED, MANAGER_ERROR_PARSING_TORRENT, UI_NEW_TORRENT_REQUEST, UI_OPEN_TORRENT_REQUEST, UI_DELETE_TORRENT_REQUEST } from './events/events';
+import { 
+  MANAGER_TORRENT_ADDED,
+  MANAGER_TORRENT_DELETED,
+  MANAGER_ERROR_PARSING_TORRENT,
+  UI_NEW_TORRENT_REQUEST,
+  UI_OPEN_TORRENT_REQUEST, 
+  UI_DELETE_TORRENT_REQUEST
+  } from './events/events';
 
 const logger = require('./logging/logger')
 const net = require('net');
@@ -41,46 +48,25 @@ const getPort = (server) => (callback) => {
 const connectionListener = (torrentManager) => (socket) => {
   logger.verbose(`Incoming Connection from ${socket.remoteAddress}`)
   socket.once('data', async (chunk) => {
-    const {peerId, infoHash} = await parse(chunk)
-    const torrentsWithSameInfoHash = R.filter((torrent) => infoHash.equals(torrent.infoHash))(torrentManager.torrents)
-    if (torrentsWithSameInfoHash.length == 0){
-      logger.verbose('None valid Info Hash corresponding was found. Aborting Connection')
-      socket.end()
-    } else {
-      const torrent = torrentsWithSameInfoHash[0];
-      logger.verbose(`Peer ${socket.remoteAddress} is connecting for Torrent : ${torrent.name}`);
-      const handshakeResponse = handshakeParser.create(infoHash, null);
-      const peer = new Peer(torrent, socket, peerId)
-      torrent.addPeer(peer)
-      socket.write(handshakeResponse);
-    }
-
-
-
-    parse(chunk).then(function(parsedHandshake){
-      const torrentsWithSameInfoHash = _.filter(self.torrents, function(torrent){
-        return torrent['infoHash'].equals(parsedHandshake['infoHash']);
-      });
+    try {
+      const {peerId, infoHash} = await parse(chunk)
+      const torrentsWithSameInfoHash = R.filter((torrent) => infoHash.equals(torrent.infoHash))(torrentManager.torrents)
       if (torrentsWithSameInfoHash.length == 0){
-        logger.verbose('None valid Info Hash corresponding was found. Aborting Connection');
-        socket.end();
+        logger.verbose('None valid Info Hash corresponding was found. Aborting Connection')
+        socket.end()
       } else {
-          const torrent = torrentsWithSameInfoHash[0];
-          logger.verbose(`Peer ${socket.remoteAddress} is connecting for Torrent : ${torrent['torrent']['name']}`);
-          const handshakeResponse = handshakeParser.create(torrent['infoHash'], self.peerId);
-          const peer = (function(){
-            if('peerId' in parsedHandshake){
-              return new Peer(torrent, socket, parsedHandshake['peerId']);
-            } else {
-              return new Peer(torrent, socket, null);
-            }
-          })();
-          socket.write(handshakeResponse);
+        const torrent = torrentsWithSameInfoHash[0];
+        logger.verbose(`Peer ${socket.remoteAddress} is connecting for Torrent : ${torrent.name}`);
+        const handshakeResponse = handshakeParser.create(infoHash, null);
+        const peer = new Peer(torrent, socket, peerId)
+        torrent.addPeer(peer)
+        socket.write(handshakeResponse);
       }
-    }).catch(function(failure){
+    } catch (err){
       logger.error('Error in Parsing Handshake. Aborting Connection');
+      logger.error(err.message)
       socket.end();
-    });
+    }
   });
 };
 
