@@ -65,7 +65,8 @@ export default class MessagesHandler extends EventEmitter{
     try{
       switch(status){
         case handlerStatus.AWAIT_PEER_ID:
-          this.decodePeerID(chunk);
+          const peerId = this.decodePeerID(chunk);
+          self.emit('peerId', peerId)
         case handlerStatus.DECODING_LENGTH_PREFIX:
           const lengthPrefix = this.decodeLengthPrefix(chunk);
           logger.verbose("Length : "+lengthPrefix);

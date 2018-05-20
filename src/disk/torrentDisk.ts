@@ -99,7 +99,7 @@ export const updateBitfield = (bitfield: Buffer, pieceIndex:  number): Buffer =>
 };
 
 export default class TorrentDisk {
-    info_dictionary:  CustomInfoDictCommon
+    infoDictionary:  CustomInfoDictCommon
     savepath: string
     pieces: Piece[] = []
     files: FileInfo[] = []
@@ -108,13 +108,13 @@ export default class TorrentDisk {
     bitfield: Buffer
 
     constructor(metaFile: TorrentDict, savepath: string){
-        this.info_dictionary = createCustomInfoDictFromMetaFile(metaFile, savepath)
+        this.infoDictionary = createCustomInfoDictFromMetaFile(metaFile, savepath)
         this.savepath = savepath
     }
 
     async init(): Promise<number>{
-        const fileInfos: FileInfo[] = await this.initFiles(this.info_dictionary.getFilesInfos())
-        const pieces: Piece[] = await this.initPieces(this.info_dictionary, fileInfos)
+        const fileInfos: FileInfo[] = await this.initFiles(this.infoDictionary.getFilesInfos())
+        const pieces: Piece[] = await this.initPieces(this.infoDictionary, fileInfos)
         this.files = fileInfos
         this.pieces = pieces
         return 0
@@ -216,8 +216,12 @@ export default class TorrentDisk {
         return this.bitfield
     }
 
-    async verify(): Promise<Buffer> {
-        return undefined
+    async verify(): Promise<number> {
+        const blocksCompleted: number[] = await Promise.all(this.pieces.map(async (piece: Piece) => {
+            const isPieceCompleted: boolean = await piece.passSha1Verification()
+            return isPieceCompleted ? piece.length : 0
+        }))
+        return R.sum(blocksCompleted)
     }
 
     clear(): void {
