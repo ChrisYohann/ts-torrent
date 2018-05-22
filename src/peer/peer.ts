@@ -18,12 +18,12 @@ import {
     KeepAlive
 } from './torrentMessages'
 import { Socket } from 'net'
-import Torrent from '../Torrent/torrent'
+import { Torrent } from '../Torrent/torrent'
 import { logger } from '../logging/logger'
 
 const Queue = require('queue')
 
-export default class Peer extends EventEmitter {
+export class Peer extends EventEmitter {
     
     torrent: Torrent
     peerId: Buffer

@@ -20,7 +20,6 @@ export class PieceBlock {
     }
 }
 
-
 export default class Piece {
     readonly fingerPrint: Buffer
     readonly length: number
@@ -100,7 +99,7 @@ export default class Piece {
             }
         }).catch((error) => {
           logger.error('Global Error in Writing Pieces')
-          logger.error(error)
+          logger.error(error.message)
           return {bytesWritten: 0, isPieceCompletedAndValid: false}
         })     
     }
@@ -142,7 +141,6 @@ export default class Piece {
                     lengthPossibleToBeRead, current_offset)
                     resolve(buffer)
                 } catch (err){
-                    console.log(err)
                     reject(err)
                 }
             })
@@ -154,7 +152,7 @@ export default class Piece {
         return Promise.all(jobs).then((listBuffers: Buffer[]) => {
             return Buffer.concat(listBuffers)
           }).catch((err) => {
-            logger.error(err)
+            logger.error(err.message)
             return Buffer.alloc(0)
           })
     }
@@ -215,13 +213,13 @@ export default class Piece {
     async passSha1Verification(): Promise<boolean> {
         try {
             const expectedSHA1Print: Buffer = this.fingerPrint
-            const data: Buffer = await this.read(0, length)
+            const data: Buffer = await this.read(0, this.length)
             const sha1_hash = crypto.createHash('sha1')
             sha1_hash.update(data)
             const digest: Buffer = sha1_hash.digest()
             return digest.equals(expectedSHA1Print)
         } catch (e){
-            logger.error(e)
+            logger.error(e.message)
             return false
         }
 

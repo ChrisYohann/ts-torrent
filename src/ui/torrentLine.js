@@ -23,7 +23,7 @@ export class TorrentLine {
             .column(this.torrent.name,  Math.ceil(0.25*NB_COLUMNS))
             .column(new Progress(Math.ceil(0.20*NB_COLUMNS)).update(this.torrent.completed, this.torrent.size))
             .column(`${sizeFormatter(this.downloadedAmountFromLastSecond)}/s`, Math.ceil(0.15*NB_COLUMNS))
-            .column(this.torrent.activePeers.length, Math.ceil(0.15*NB_COLUMNS))
+            .column(`${this.torrent.activePeers.length}`, Math.ceil(0.15*NB_COLUMNS))
             .fill()
         return result
     }
@@ -31,10 +31,10 @@ export class TorrentLine {
 
 const sizeFormatter = (value) => {
     if(value < 1024){
-        return value + " bytes" 
+        return value.toFixed(2) + " bytes" 
     } else if((value/1024)<=1024){
         const ko = value/1024 
-        return ko + " Kb" 
+        return ko.toFixed(2) + " Kb" 
     } else if(value/(1024*1024) <= 1024){
         const mo = value/(1024*1024.0)
         return Number(mo.toFixed(2)) + " Mb" 

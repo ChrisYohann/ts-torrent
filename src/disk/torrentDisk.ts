@@ -20,6 +20,7 @@ const instanceOfDictMultipleFiles = (infoDict: InfoDictionaryMultipleFiles | Inf
 
 const createCustomInfoDictFromMetaFile = (dict: TorrentDict, savepath: string): CustomInfoDictCommon => {
     const info_dict: InfoDictionaryMultipleFiles | InfoDictionarySingleFile = dict['info']
+    console.log(info_dict)
     if (instanceOfDictMultipleFiles(info_dict)){
         const files = info_dict['files']
         const modified_files = files.map((fileInfo) => {
@@ -160,8 +161,6 @@ export default class TorrentDisk {
 
             let bytesPieceRemaining = lengthPiece
             while(bytesPieceRemaining > 0){
-                console.log(files)
-                console.log(fileIndex)
                 const {fd, path, length} = files[fileIndex]
                 piece.addSeekPointer(new SeekPointer(fd, fileOffset, pieceOffset, length))
                 if(bytesPieceRemaining > length - fileOffset){
@@ -170,10 +169,9 @@ export default class TorrentDisk {
                     fileOffset = 0
                     fileIndex ++
                 } else if (bytesPieceRemaining < length - fileOffset){
-                    pieceOffset += length - fileOffset
-                    bytesPieceRemaining = bytesPieceRemaining - length + fileOffset
-                    fileOffset = 0
-                    fileIndex++
+                    fileOffset += bytesPieceRemaining;
+                    bytesPieceRemaining = 0;
+                    pieceOffset = 0
                 } else {
                     fileOffset = 0;
                     bytesPieceRemaining = 0;
@@ -225,7 +223,8 @@ export default class TorrentDisk {
     }
 
     async verify(): Promise<number> {
-        const blocksCompleted: number[] = await Promise.all(this.pieces.map(async (piece: Piece) => {
+        const pieces = this.pieces
+        const blocksCompleted: number[] = await Promise.all(pieces.map(async (piece: Piece) => {
             const isPieceCompleted: boolean = await piece.passSha1Verification()
             return isPieceCompleted ? piece.length : 0
         }))

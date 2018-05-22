@@ -21,7 +21,9 @@ export default async (properties: TorrentProperties): Promise<Either<Error, Benc
         const info_dictionary: BencodeDict = await InfoDictionaryUtils.create(filepath, isDirectory)
         const result: BencodeDict = new BencodeDict({})
         result.putContent('announce', announce)
-        result.putContent('announce-list', announce_list)
+        if (announce_list !== []){
+            result.putContent('announce-list', announce_list)
+        }
         result.putContent('comment', comment)
         result.putContent('created by', 'nhyne');
         result.putContent('creation date', Math.round(Date.now()/1000));

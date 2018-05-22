@@ -70,7 +70,7 @@ export class UI extends EventEmitter {
                   case 'up' :
                       if(this.mode == ESCAPE_MODE && this.content.length > 0){
                           this.mode = FOCUS_MODE 
-                          drawFooter.call(this).output()
+                          drawFooter(this.mode).output()
                           addFocus.call(this) 
                       } else if(this.mode == FOCUS_MODE) {
                           jumpToNextTorrent.call(this, -1)
@@ -79,7 +79,7 @@ export class UI extends EventEmitter {
                   case 'down' :
                       if(this.mode == ESCAPE_MODE && this.content.length > 0){
                           this.mode = FOCUS_MODE 
-                          drawFooter.call(this).output()
+                          drawFooter(this.mode).output()
                           addFocus.call(this) 
                       } else if(this.mode == FOCUS_MODE){
                           jumpToNextTorrent.call(this, +1)
@@ -88,7 +88,7 @@ export class UI extends EventEmitter {
                   case 'escape' :
                       if(this.mode == FOCUS_MODE) {
                           this.mode = ESCAPE_MODE 
-                          drawFooter.call(this).output()
+                          drawFooter(this.mode).output()
                           clearFocus.call(this)
                           process.stdout.write(clc.move.to(0, 2))
                       } else if (this.mode == CREATE_MODE){
@@ -121,7 +121,7 @@ export class UI extends EventEmitter {
                                   process.stdin.removeAllListeners('data')
                                   PROCESS_STDIN_EVENT_LOCKED = false
                               }
-                          process.stdin.removeAllListeners('keypress')
+                          //process.stdin.removeAllListeners('keypress')
                           createNewTorrentWizard.call(this)
                       }
                       break 
@@ -342,7 +342,6 @@ const createNewTorrentWizard = function(){
         }
       ]
     inquirer.prompt(questions).then(function(answers){
-        console.log(answers)
       self.emit(events.UI_NEW_TORRENT_REQUEST, answers)
     })
 

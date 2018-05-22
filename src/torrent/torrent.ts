@@ -1,11 +1,11 @@
 import { TorrentDict } from './types'
 import { EventEmitter } from 'events'
 import TorrentDisk from '../disk/torrentDisk'
-import Tracker from '../tracker/tracker'
+import { Tracker } from '../tracker/tracker'
 import { HTTPTracker } from '../tracker/httpTracker'
 import { UDPTracker } from '../tracker/udpTracker'
 import * as PeerManager from '../peer/peerManager'
-import Peer from '../peer/peer'
+import { Peer } from '../peer/peer'
 import * as BencodeUtils from '../bencode/utils'
 import { logger } from '../logging/logger'
 import * as Utils from '../utils/utils'
@@ -15,18 +15,17 @@ import * as net from 'net'
 import * as Handshake from '../peer/handshake'
 import { Maybe } from 'monet'
 import * as path from 'path'
+import * as _ from 'underscore'
 
 const udpAddressRegex = /^(udp:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
 const httpAddressRegex = /^(http:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
 const MAX_ACTIVE_PEERS = 5 ;
 
-export default class Torrent extends EventEmitter {
+export class Torrent extends EventEmitter {
     metadata: TorrentDict
     name: string
     filepath: string
 
-    mainTrackerURL: string
-    otherTrackersURLs: string[][]
     infoHash: Buffer
 
     disk: TorrentDisk
@@ -43,7 +42,7 @@ export default class Torrent extends EventEmitter {
     port: number
     lastKnownPeers: string[]
     activePeers: Peer[] = []
-    actualTrackerIndex: number
+    actualTrackerIndex: number = 0
     activeTracker: Tracker
     trackers: string[]
     
@@ -55,8 +54,7 @@ export default class Torrent extends EventEmitter {
         this.metadata = meta
         this.name = meta.info.name
         this.filepath = filepath
-        this.mainTrackerURL = meta.announce
-        this.otherTrackersURLs = meta["announce-list"]
+        this.trackers = getTrackersFromTorrentDict(meta)
         this.infoHash = BencodeUtils.encode(meta.info)
         this.disk = new TorrentDisk(meta, path.dirname(filepath))
         this.pieceRequestGenerator = PeerManager.askPeersForPieces(this)()
@@ -65,28 +63,36 @@ export default class Torrent extends EventEmitter {
     async init(){
         //this.initTracker()
         console.log('VERIFYING')
-        await this.disk.init().then(this.disk.verify)
+        await this.disk.init()
+            .then((status) => this.disk.verify())
+            .then((completed) => {
+                this.completed = completed
+            })
     }
 
     start(){
         if(this.trackers.length <= 0){
             logger.error("No valid tracker found. Aborting.");
         } else {
-            this.activeTracker = this.getHTTPorUDPTracker(this.trackers[this.actualTrackerIndex]);
-            this.activeTracker.on("peers", async (peerList: string[]) => {
-                if(!this.isCompleted()){
-                    const newPeers: Peer[] = await this.lookForNewPeers(peerList)
-                    this.addPeersAndLookForPieces(newPeers)
-                }   
-            })
-            this.activeTracker.announce("started")
-            this.on(events.HAVE, (index: number) => {
-                this.askedPieces = R.remove(
-                    R.indexOf(index)(this.askedPieces),
-                    1,
-                    this.askedPieces)
-                this.lookForNewPieces()
-            })
+            const maybeTracker: Maybe<Tracker> = this.getHTTPorUDPTracker(this.trackers[this.actualTrackerIndex])
+            if (maybeTracker.isSome()){
+                this.activeTracker.on("peers", async (peerList: string[]) => {
+                    if(!this.isCompleted()){
+                        const newPeers: Peer[] = await this.lookForNewPeers(peerList)
+                        this.addPeersAndLookForPieces(newPeers)
+                    }   
+                })
+                this.activeTracker.announce("started")
+                this.on(events.HAVE, (index: number) => {
+                    this.askedPieces = R.remove(
+                        R.indexOf(index)(this.askedPieces),
+                        1,
+                        this.askedPieces)
+                    this.lookForNewPieces()
+                })
+            } else {
+                //No tracker
+            } 
         }
     }
 
@@ -140,14 +146,15 @@ export default class Torrent extends EventEmitter {
         }
     }
 
-    getHTTPorUDPTracker(trackerURL: string) {
+    getHTTPorUDPTracker(trackerURL: string): Maybe<Tracker> {
         let self = this;
         if(trackerURL.match(httpAddressRegex)){
-            return new HTTPTracker(trackerURL, this)
+            return Maybe.of(new HTTPTracker(trackerURL, this))
         } else if(trackerURL.match(udpAddressRegex)){
-            return new UDPTracker(trackerURL, this)
+            return Maybe.of(new UDPTracker(trackerURL, this))
         } else {
             logger.error("No valid Protocol for ${trackerURL} found. Aborting.");
+            return Maybe.None()
         }
     }
 
@@ -213,3 +220,8 @@ const getPeer = (torrent: Torrent, host: string, port: string): Promise<Maybe<Pe
         })    
     }) 
 }
+
+export const getTrackersFromTorrentDict = (meta: TorrentDict): string[] => {
+    return meta['announce-list'] ? _.flatten(meta['announce-list']) : [meta.announce]
+}
+

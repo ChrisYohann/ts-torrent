@@ -13,11 +13,11 @@ export class CustomInfoDictCommon {
         "path" : string
     }[]
 
-    constructor(name: string, savepath, files: {length: number, path: string}[], piece_length: number, pieces: Buffer){
+    constructor(name: string, savepath, files: {length: number, path: string}[], pieceLength: number, pieces: Buffer){
         this.name = name
         this.savepath = savepath
         this.files = files
-        this.piece_length = piece_length
+        this.piece_length = pieceLength
         this.pieces = pieces
         this.totalSize = this.computeTotalSize()
         this.nbPieces = this.computeNbPieces()
@@ -29,7 +29,7 @@ export class CustomInfoDictCommon {
     
     computeLastPieceLength(): number {
         const totalSize: number = this.totalSize
-        const pieceLength: number = this.nbPieces
+        const pieceLength: number = this.piece_length
         return totalSize % pieceLength == 0 ? pieceLength : totalSize % pieceLength
     }
     

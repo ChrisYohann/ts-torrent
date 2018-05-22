@@ -5,8 +5,8 @@ import * as compact2string from 'compact2string'
 import * as util from 'util'
 import * as BencodeUtils from '../bencode/utils'
 import { BencodeToken, BencodeDict} from '../bencode/types'
-import Tracker from './tracker'
-import Torrent from '../Torrent/torrent';
+import { Tracker } from './tracker'
+import { Torrent } from '../Torrent/torrent';
 
 export class HTTPTracker extends Tracker {
 

@@ -1,7 +1,7 @@
 import * as R from 'ramda'
 import * as _ from 'underscore'
-import Peer from './peer'
-import Torrent from '../Torrent/torrent'
+import { Peer } from './peer'
+import { Torrent } from '../Torrent/torrent'
 const MAX_NB_PIECES_BY_PEER = 3 
 
 export type PieceWithCount = {pieceIndex: number, count: number}

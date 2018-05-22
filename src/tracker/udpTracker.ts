@@ -4,8 +4,8 @@ import { logger } from '../logging/logger'
 import * as Utils from '../utils/utils'
 import * as util from 'util'
 import * as url from 'url'
-import Tracker from './tracker'
-import Torrent from '../Torrent/torrent';
+import { Tracker } from './tracker'
+import { Torrent } from '../Torrent/torrent';
 
 const compact2string = require("compact2string");
 

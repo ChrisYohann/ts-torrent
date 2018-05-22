@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events'
-import Torrent from '../Torrent/torrent';
+import { Torrent } from '../Torrent/torrent';
 
-export default abstract class Tracker extends EventEmitter {
+export abstract class Tracker extends EventEmitter {
     torrent: Torrent
     trackerURL: string
     trackerPort: string

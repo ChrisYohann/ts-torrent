@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import Torrent from './Torrent/torrent'
+import { Torrent } from './Torrent/torrent'
 import { 
   MANAGER_TORRENT_ADDED,
   MANAGER_TORRENT_DELETED,
@@ -110,7 +110,6 @@ export class App extends EventEmitter {
 
 const newTorrentFromUIListener = function(torrentProperties){
   const self = this
-  console.log(torrentProperties)
   self.torrentManager.addNewTorrent(torrentProperties)
 }
 
