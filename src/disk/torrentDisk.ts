@@ -36,8 +36,28 @@ const createCustomInfoDictFromMetaFile = (dict: TorrentDict, savepath: string): 
     }
 }
 
+const computeChunkSizeToFillEmptyFile = (theoricalLength: number): {nbSteps: number; chunkSize: number; lastChunkSize: number} => {
+    if (theoricalLength < 1 << 30) {
+        return {
+            nbSteps : 11,
+            chunkSize : Math.floor(theoricalLength/10),
+            lastChunkSize : theoricalLength % 10,
+        }
+    } else {
+        const chunkSize = 1 << 30
+        const nbSteps = Math.floor(theoricalLength/chunkSize) + 1
+        const lastChunkSize = theoricalLength - (nbSteps - 1) * chunkSize
+        return {
+            nbSteps,
+            chunkSize,
+            lastChunkSize,
+        }
+    }
+}
+
 const checkIfFileHasRightLength = (path: string, theoricalLength: number) => async (fileDescriptor: number): Promise<FileInfo> => {
     const stats: fs.Stats = await statsPromised(path)
+    logger.debug(`Theorical length : ${theoricalLength}. Actual Length : ${stats.size}`)
     return {fd: fileDescriptor, path, length: stats.size}
 }
 
@@ -45,17 +65,19 @@ const fillWithEmptyBytes = (path: string, theoricalLength: number) => async (fil
     if (fileInfo.length == theoricalLength){
         return fileInfo
     } else {
-        const byte = Buffer.alloc(1)
+        const {chunkSize, nbSteps, lastChunkSize} = computeChunkSizeToFillEmptyFile(theoricalLength)
+        const chunk = Buffer.allocUnsafe(chunkSize)
+        const lastChunk = Buffer.alloc(lastChunkSize)
         const wstream = fs.createWriteStream(fileInfo.path)
         const result = await new Promise((resolve: (value: FileInfo) => void, reject) => {
-            let i = theoricalLength
+            let i = nbSteps
             const writeLoop = () => {
                 let ok = true;
                 
                 do {
                   i--;
                   if (i === 0) {
-                    wstream.write(byte, 'utf8', (err) => {
+                    wstream.write(lastChunk, 'utf8', (err) => {
                         if (err){
                             logger.error(err)
                             reject(err)
@@ -66,7 +88,8 @@ const fillWithEmptyBytes = (path: string, theoricalLength: number) => async (fil
                   } else {
                     // see if we should continue, or wait
                     // don't pass the callback, because we're not done yet.
-                    ok = wstream.write(byte, 'utf8');
+                    console.log(`Writing Chunk ${i}. Size : ${chunk.length}`)
+                    ok = wstream.write(chunk, 'utf8');
                   }
                 } while (i > 0 && ok);
                 if (i > 0) {
@@ -114,8 +137,11 @@ export default class TorrentDisk {
     }
 
     async init(): Promise<number>{
+        logger.info(`Init disk for ${this.infoDictionary.name}. Savepath : ${this.savepath}`)
         const fileInfos: FileInfo[] = await this.initFiles(this.infoDictionary.getFilesInfos())
+        logger.info(`FileInfos : ${JSON.stringify(fileInfos)}`)
         const pieces: Piece[] = await this.initPieces(this.infoDictionary, fileInfos)
+        logger.info(`Init pieces`)
         this.files = fileInfos
         this.pieces = pieces
         return 0
@@ -224,12 +250,14 @@ export default class TorrentDisk {
 
     async verify(): Promise<number> {
         const pieces = this.pieces
-        const blocksCompleted: number[] = await Promise.all(pieces.map(async (piece: Piece) => {
+        const blocksCompleted: number[] = await Promise.all(pieces.map(async (piece: Piece, index: number) => {
             const isPieceCompleted: boolean = await piece.passSha1Verification()
+            logger.info(`Index : ${index} ${isPieceCompleted}`)
             return isPieceCompleted ? piece.length : 0
         }))
         const completed: number = R.sum(blocksCompleted)
         this.completed = completed
+        logger.info(JSON.stringify({name : this.infoDictionary.name, completed}))
         return completed
     }
 

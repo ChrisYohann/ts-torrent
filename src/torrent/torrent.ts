@@ -62,7 +62,6 @@ export class Torrent extends EventEmitter {
 
     async init(){
         //this.initTracker()
-        console.log('VERIFYING')
         await this.disk.init()
             .then((status) => this.disk.verify())
             .then((completed) => {
@@ -76,6 +75,7 @@ export class Torrent extends EventEmitter {
         } else {
             const maybeTracker: Maybe<Tracker> = this.getHTTPorUDPTracker(this.trackers[this.actualTrackerIndex])
             if (maybeTracker.isSome()){
+                this.activeTracker = maybeTracker.some()
                 this.activeTracker.on("peers", async (peerList: string[]) => {
                     if(!this.isCompleted()){
                         const newPeers: Peer[] = await this.lookForNewPeers(peerList)
@@ -153,7 +153,7 @@ export class Torrent extends EventEmitter {
         } else if(trackerURL.match(udpAddressRegex)){
             return Maybe.of(new UDPTracker(trackerURL, this))
         } else {
-            logger.error("No valid Protocol for ${trackerURL} found. Aborting.");
+            logger.error(`No valid Protocol for ${trackerURL} found. Aborting.`);
             return Maybe.None()
         }
     }

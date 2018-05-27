@@ -25,8 +25,6 @@ export const convertBencodeDictInTorrentDict = (bdict: BencodeDict|object): Mayb
     const predicates = R.where({
         'announce' : R.is(Buffer),
         'announce-list' : R.is(Array),
-        'created by' : R.is(Buffer),
-        'encoding' : R.is(Buffer),
         'info' : (elem) => R.is(Object, elem) && checkInfoDict(elem)
     })
     if(predicates(dictAsJSObject)){

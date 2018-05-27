@@ -351,7 +351,7 @@ const openTorrentWizard = function(){
   let self = this
   const questions = [
     {
-      name : 'torrent_filepath',
+      name : 'torrentPath',
       type : 'input',
       message : 'Path where the .torrent File is saved',
       validate : function(value){
