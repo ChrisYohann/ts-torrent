@@ -1,6 +1,19 @@
 import { EventEmitter } from 'events'
 import { Torrent } from '../Torrent/torrent';
 
+export interface TrackerResponse {
+    interval: number
+    seeders: number
+    leechers: number
+    peers ?: string[] | PeerDictionary[]
+}
+
+export interface PeerDictionary {
+    peerId: Buffer
+    ip: string
+    port: number
+}
+
 export abstract class Tracker extends EventEmitter {
     torrent: Torrent
     trackerURL: string

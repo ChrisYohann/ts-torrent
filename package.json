@@ -23,6 +23,7 @@
     "@types/underscore": "^1.8.8",
     "@types/winston": "^2.3.8",
     "async": "^2.6.0",
+    "axios": "^0.18.0",
     "chai": "^4.1.2",
     "cli-color": "^1.2.0",
     "clui": "^0.3.6",

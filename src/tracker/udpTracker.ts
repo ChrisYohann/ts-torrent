@@ -4,12 +4,12 @@ import { logger } from '../logging/logger'
 import * as Utils from '../utils/utils'
 import * as util from 'util'
 import * as url from 'url'
-import { Tracker } from './tracker'
+import { Tracker, TrackerResponse } from './tracker'
 import { Torrent } from '../Torrent/torrent';
 import { resolve } from 'path';
 import { Either, Left, Right } from 'monet'
 
-const compact2string = require("compact2string");
+const compact2string = require('compact2string');
 
 const PROTOCOL_ID = 0x41727101980;
 const protocolIDBuffer = (() => {
@@ -41,7 +41,7 @@ export class UDPTracker extends Tracker {
     super(announceURL, torrent)
     this.transactionID = crypto.randomBytes(4)
     const urlObject: url.UrlWithStringQuery = url.parse(announceURL)
-    this.trackerURL = (urlObject.hostname == "0.0.0.0" ? "127.0.0.1" : urlObject.hostname);
+    this.trackerURL = (urlObject.hostname == '0.0.0.0' ? '127.0.0.1' : urlObject.hostname);
     this.trackerPort = urlObject.port;
     logger.verbose(`Tracker Infos : ${this.trackerURL}:${this.trackerPort}`)
   }
@@ -62,52 +62,67 @@ export class UDPTracker extends Tracker {
     })   
   }
   
-  async announce(event: string){
+  async announce(event: string): Promise<TrackerResponse> {
     if (!this.isServerBound){
       await this.bindServer()
     }
-    this.server.removeAllListeners('message')
-    this.server.on('message', (message: Buffer, remote: dgram.AddressInfo) => {
-      logger.debug("Message received from : "+remote.address + ':' + remote.port);
+    return new Promise((resolve: (value: TrackerResponse) => void, reject) => {
+      this.server.removeAllListeners('message')
+      this.server.on('message', (message: Buffer, remote: dgram.AddressInfo) => {
+      logger.debug('Message received from : '+remote.address + ':' + remote.port);
       logger.debug(message.toString('hex'));
       if(message.length < 4){
-        logger.debug("tracker Response is less than 4 bytes. Aborting.");
+        logger.debug('tracker Response is less than 4 bytes. Aborting.');
         return ;
       }
       const action = message.readUInt32BE(0);
-      logger.verbose("Action : "+action);
+      logger.verbose('Action : '+action);
       switch(action){
         case CONNECT_ACTION :
-        parseConnectResponse(message).cata(
-          (err: Error) => {},
-          ({connectionId, transactionId}) => this.sendUDPAnnounceRequest(connectionId, transactionId, event)
-        ) ;
-        break ;
+          parseConnectResponse(message).cata(
+            (err: Error) => { 
+              logger.error(err.message)
+              reject(err)
+            },
+            ({connectionId, transactionId}) => this.sendUDPAnnounceRequest(connectionId, transactionId, event)
+          )
+          break
         case ANNOUNCE_ACTION :
-        const response = parseAnnounceResponse;
+          parseAnnounceResponse(this.transactionID)(message).cata(
+            (err: Error) => {
+              logger.error(err.message)
+              reject(err)
+            },
+            (success: TrackerResponse) => resolve(success)
+          )
         break ;
         case SCRAPE_ACTION :
         break ;
         case ERROR_ACTION :
-        logger.error(`ERROR : ${message.toString('hex')}`);
-        break ;
+          logger.error(`ERROR : ${message.toString()}`);
+          reject(new Error(message.toString()))
+          break ;
         default :
-        break ;
+          break ;
       }
     })
     
     logger.info(`Connecting to ${this.trackerURL}`);
     const connectMessage: Buffer = buildConnectRequest(this.transactionID)
-    logger.debug("Sending Connect Message");
+    logger.debug('Sending Connect Message');
     logger.debug(connectMessage.toString('hex'));
     if(this.trackerURL && this.trackerPort){
       this.server.send(connectMessage, 0, 16, parseInt(this.trackerPort), this.trackerURL, function(error){
-        if(error)
-        logger.error(error.message)
+        if(error){
+          reject(error)
+        }
       })
     } else {
-      logger.warn("Unable to parse tracker IP and Address")
+      logger.warn('Unable to parse tracker IP and Address')
+      reject(new Error('Unable to parse tracker IP and Address'))
+
     }
+    })  
   }
   
   private sendUDPAnnounceRequest(connectionId: Buffer, transactionId: Buffer, torrentEvent: string){
@@ -118,11 +133,11 @@ export class UDPTracker extends Tracker {
         logger.error(error.message)
       })
     } else {
-      logger.warn("Unable to parse tracker IP and Address")
+      logger.warn('Unable to parse tracker IP and Address')
     }
   };
 }
-const parseAnnounceResponse = (transactionId: Buffer) => (message: Buffer): Either<Error, Object> => {
+const parseAnnounceResponse = (transactionId: Buffer) => (message: Buffer): Either<Error, TrackerResponse> => {
     let messageError: string
     /* Offset      Size            Name            Value
     0           32-bit integer  action          1 // announce
@@ -134,14 +149,14 @@ const parseAnnounceResponse = (transactionId: Buffer) => (message: Buffer): Eith
     24 + 6 * n  16-bit integer  TCP port
     20 + 6 * N */
     if(message.length < 20){
-      messageError = "Error : Request Message should be 20 bytes length"
+      messageError = 'Error : Request Message should be 20 bytes length'
       logger.error(messageError)
       return Left(new Error(messageError))
     }
     
     /*const transactionID = message.slice(4, 8);
     if(transactionID.equals(transactionId)){
-      messageError = "Error : TransactionID does not match the one sent by the client"
+      messageError = 'Error : TransactionID does not match the one sent by the client'
       logger.error(messageError);
       return Left(new Error(messageError))
     }*/
@@ -152,9 +167,9 @@ const parseAnnounceResponse = (transactionId: Buffer) => (message: Buffer): Eith
     logger.info(`Seeders : ${seeders} Leechers : ${leechers}`);
     
     const peersPart = message.slice(20);
-    const peers = compact2string.multi(peersPart);
-    logger.verbose("peers : "+peers);
-    const result = {
+    const peers: string[] = compact2string.multi(peersPart);
+    logger.verbose('peers : '+peers);
+    const result: TrackerResponse = {
       interval,
       seeders,
       leechers,
@@ -165,22 +180,21 @@ const parseAnnounceResponse = (transactionId: Buffer) => (message: Buffer): Eith
 
 const parseConnectResponse = (message: Buffer): Either<Error, {connectionId: Buffer, transactionId: Buffer}> => {
   if(message.length < 16){
-    logger.error("Error : Connect Message should be 16 bytes length")
-    return Left( new Error("Error : Connect Message should be 16 bytes length"))
+    logger.error('Error : Connect Message should be 16 bytes length')
+    return Left( new Error('Error : Connect Message should be 16 bytes length'))
   }
   const transactionId = message.slice(0, 4);
-  logger.debug("TransactionID : "+ transactionId);
+  logger.debug('TransactionID : '+ transactionId);
   if(transactionId != this.transactionID.readUInt32BE(0)){
-    logger.error("Error : TransactionID does not match the one sent by the client");
-    return Left(new Error("Error : TransactionID does not match the one sent by the client"))
+    logger.error('Error : TransactionID does not match the one sent by the client');
+    return Left(new Error('Error : TransactionID does not match the one sent by the client'))
   }
   
   const connectionId: Buffer = message.slice(8)
-  logger.debug("Connection ID : "+this.connectionID.toString('hex'));
+  logger.debug('Connection ID : '+this.connectionID.toString('hex'));
   return Right({connectionId, transactionId})
 };
-
-const buildConnectRequest = (transactionID: Buffer) => {
+const buildConnectRequest = (transactionID: Buffer): Buffer => {
   const connectActionBuffer: Buffer = Buffer.alloc(4)
   connectActionBuffer.writeUInt32BE(CONNECT_ACTION, 0)
   const connectMessage = Buffer.concat([protocolIDBuffer, connectActionBuffer, transactionID])
@@ -203,12 +217,12 @@ const buildAnnounceRequest = (connectionID: Buffer, transactionID: Buffer, torre
   96      16-bit integer  port
   98*/
   const requestMessage = Buffer.alloc(98);
-  logger.debug("Connection ID : "+connectionID.toString('hex'));
+  logger.debug('Connection ID : '+connectionID.toString('hex'));
   connectionID.copy(requestMessage, 0);
   requestMessage.writeUInt32BE(ANNOUNCE_ACTION, 8);
   transactionID.copy(requestMessage, 12);
   torrent.infoHash.copy(requestMessage, 16) 
-  requestMessage.write("CLI Torrent Client", 36, 20);
+  requestMessage.write('CLI Torrent Client', 36, 20);
   const amountDownloadedBuffer = writeInt64BE(torrent.downloaded);
   amountDownloadedBuffer.copy(requestMessage, 56);
   const amountLeftBuffer = writeInt64BE(torrent.size - torrent.completed)
