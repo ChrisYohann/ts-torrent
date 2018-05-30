@@ -38,8 +38,8 @@ const ensureRightProtocol = (chunk: Buffer): Promise<Buffer> => {
 
 const getInfoHash = (chunk: Buffer): Promise<{chunk: Buffer, infoHash: Buffer}> => {
   const infoHash: Buffer = chunk.slice(28, 28+INFO_HASH_LENGTH);
-  return new Promise(function(){
-    Promise.resolve({chunk, infoHash})
+  return new Promise((resolve, reject) => {
+    resolve({chunk, infoHash})
   })
 }
 
@@ -65,5 +65,7 @@ export const parse = (chunk: Buffer): Promise<{peerId?: Buffer, infoHash: Buffer
 
 
 export const build = (infoHash: Buffer, peerId: Buffer): Buffer => {
-  return Buffer.concat([Buffer.from(PROTOCOL_LENGTH.toString()), protocolName, reservedBytes, infoHash, peerId], MAX_HANDHSAKE_LENGTH);
+  const protocolLengthBuffer = Buffer.alloc(1)
+  protocolLengthBuffer[0] = 19
+  return Buffer.concat([protocolLengthBuffer, protocolName, reservedBytes, infoHash, peerId], MAX_HANDHSAKE_LENGTH);
 };

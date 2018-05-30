@@ -5,23 +5,23 @@ import * as Utils from '../utils/utils'
 import * as util from 'util'
 import * as url from 'url'
 import { Tracker, TrackerResponse } from './tracker'
-import { Torrent } from '../Torrent/torrent';
-import { resolve } from 'path';
+import { Torrent } from '../Torrent/torrent'
+import { resolve } from 'path'
 import { Either, Left, Right } from 'monet'
 
-const compact2string = require('compact2string');
+const compact2string = require('compact2string')
 
-const PROTOCOL_ID = 0x41727101980;
+const PROTOCOL_ID = 0x41727101980
 const protocolIDBuffer = (() => {
   const buf = Buffer.allocUnsafe(8)
   buf.writeUInt32BE(0x417, 0)
   buf.writeUInt32BE(0x27101980, 4)
   return buf
 })()
-const CONNECT_ACTION = 0;
-const ANNOUNCE_ACTION = 1;
-const SCRAPE_ACTION = 2;
-const ERROR_ACTION = 3;
+const CONNECT_ACTION = 0
+const ANNOUNCE_ACTION = 1
+const SCRAPE_ACTION = 2
+const ERROR_ACTION = 3
 
 const EVENTS = {
   'none' : 0,
@@ -41,8 +41,8 @@ export class UDPTracker extends Tracker {
     super(announceURL, torrent)
     this.transactionID = crypto.randomBytes(4)
     const urlObject: url.UrlWithStringQuery = url.parse(announceURL)
-    this.trackerURL = (urlObject.hostname == '0.0.0.0' ? '127.0.0.1' : urlObject.hostname);
-    this.trackerPort = urlObject.port;
+    this.trackerURL = (urlObject.hostname == '0.0.0.0' ? '127.0.0.1' : urlObject.hostname)
+    this.trackerPort = urlObject.port
     logger.verbose(`Tracker Infos : ${this.trackerURL}:${this.trackerPort}`)
   }
   
@@ -51,11 +51,11 @@ export class UDPTracker extends Tracker {
       const server = dgram.createSocket('udp4')
       
       server.on('listening', () => {
-        const address = this.server.address();
-        logger.verbose(`Server listening ${address.address}:${address.port}`);
+        const address = server.address()
+        logger.verbose(`Server listening ${address.address}:${address.port}`)
         this.server = server
         this.isServerBound = true
-        return Promise.resolve()
+        resolve()
       })
       
       server.bind()
@@ -69,14 +69,14 @@ export class UDPTracker extends Tracker {
     return new Promise((resolve: (value: TrackerResponse) => void, reject) => {
       this.server.removeAllListeners('message')
       this.server.on('message', (message: Buffer, remote: dgram.AddressInfo) => {
-      logger.debug('Message received from : '+remote.address + ':' + remote.port);
-      logger.debug(message.toString('hex'));
+      logger.debug('Message received from : '+remote.address + ':' + remote.port)
+      logger.debug(message.toString('hex'))
       if(message.length < 4){
-        logger.debug('tracker Response is less than 4 bytes. Aborting.');
-        return ;
+        logger.debug('tracker Response is less than 4 bytes. Aborting.')
+        return 
       }
-      const action = message.readUInt32BE(0);
-      logger.verbose('Action : '+action);
+      const action = message.readUInt32BE(0)
+      logger.verbose('Action : '+action)
       switch(action){
         case CONNECT_ACTION :
           parseConnectResponse(message).cata(
@@ -95,22 +95,22 @@ export class UDPTracker extends Tracker {
             },
             (success: TrackerResponse) => resolve(success)
           )
-        break ;
+        break 
         case SCRAPE_ACTION :
-        break ;
+        break 
         case ERROR_ACTION :
-          logger.error(`ERROR : ${message.toString()}`);
+          logger.error(`ERROR : ${message.toString()}`)
           reject(new Error(message.toString()))
-          break ;
+          break 
         default :
-          break ;
+          break 
       }
     })
     
-    logger.info(`Connecting to ${this.trackerURL}`);
+    logger.info(`Connecting to ${this.trackerURL}`)
     const connectMessage: Buffer = buildConnectRequest(this.transactionID)
-    logger.debug('Sending Connect Message');
-    logger.debug(connectMessage.toString('hex'));
+    logger.debug('Sending Connect Message')
+    logger.debug(connectMessage.toString('hex'))
     if(this.trackerURL && this.trackerPort){
       this.server.send(connectMessage, 0, 16, parseInt(this.trackerPort), this.trackerURL, function(error){
         if(error){
@@ -135,7 +135,7 @@ export class UDPTracker extends Tracker {
     } else {
       logger.warn('Unable to parse tracker IP and Address')
     }
-  };
+  }
 }
 const parseAnnounceResponse = (transactionId: Buffer) => (message: Buffer): Either<Error, TrackerResponse> => {
     let messageError: string
@@ -154,21 +154,20 @@ const parseAnnounceResponse = (transactionId: Buffer) => (message: Buffer): Eith
       return Left(new Error(messageError))
     }
     
-    /*const transactionID = message.slice(4, 8);
+    /*const transactionID = message.slice(4, 8)
     if(transactionID.equals(transactionId)){
       messageError = 'Error : TransactionID does not match the one sent by the client'
-      logger.error(messageError);
+      logger.error(messageError)
       return Left(new Error(messageError))
     }*/
     
-    const interval = message.readUInt32BE(8);
-    const leechers = message.readUInt32BE(12);
-    const seeders = message.readUInt32BE(16);
-    logger.info(`Seeders : ${seeders} Leechers : ${leechers}`);
+    const interval = message.readUInt32BE(8)
+    const leechers = message.readUInt32BE(12)
+    const seeders = message.readUInt32BE(16)
+    logger.info(`Seeders : ${seeders} Leechers : ${leechers}`)
     
-    const peersPart = message.slice(20);
-    const peers: string[] = compact2string.multi(peersPart);
-    logger.verbose('peers : '+peers);
+    const peersPart = message.slice(20)
+    const peers: string[] = compact2string.multi(peersPart)
     const result: TrackerResponse = {
       interval,
       seeders,
@@ -176,24 +175,24 @@ const parseAnnounceResponse = (transactionId: Buffer) => (message: Buffer): Eith
       peers
     }
     return Right(result)
-  }; 
+  } 
 
 const parseConnectResponse = (message: Buffer): Either<Error, {connectionId: Buffer, transactionId: Buffer}> => {
   if(message.length < 16){
     logger.error('Error : Connect Message should be 16 bytes length')
     return Left( new Error('Error : Connect Message should be 16 bytes length'))
   }
-  const transactionId = message.slice(0, 4);
-  logger.debug('TransactionID : '+ transactionId);
-  if(transactionId != this.transactionID.readUInt32BE(0)){
-    logger.error('Error : TransactionID does not match the one sent by the client');
+  const transactionId = message.slice(0, 4)
+  logger.debug('TransactionID : '+ transactionId.toString('hex'))
+  /*if(transactionId != this.transactionID.readUInt32BE(0)){
+    logger.error('Error : TransactionID does not match the one sent by the client')
     return Left(new Error('Error : TransactionID does not match the one sent by the client'))
-  }
+  }*/
   
   const connectionId: Buffer = message.slice(8)
-  logger.debug('Connection ID : '+this.connectionID.toString('hex'));
+  logger.debug('Connection ID : '+connectionId.toString('hex'))
   return Right({connectionId, transactionId})
-};
+}
 const buildConnectRequest = (transactionID: Buffer): Buffer => {
   const connectActionBuffer: Buffer = Buffer.alloc(4)
   connectActionBuffer.writeUInt32BE(CONNECT_ACTION, 0)
@@ -210,30 +209,31 @@ const buildAnnounceRequest = (connectionID: Buffer, transactionID: Buffer, torre
   56      64-bit integer  downloaded
   64      64-bit integer  left
   72      64-bit integer  uploaded
-  80      32-bit integer  event           0 // 0: none; 1: completed; 2: started; 3: stopped
+  80      32-bit integer  event           0 // 0: none 1: completed 2: started 3: stopped
   84      32-bit integer  IP address      0 // default
   88      32-bit integer  key
   92      32-bit integer  num_want        -1 // default
   96      16-bit integer  port
   98*/
-  const requestMessage = Buffer.alloc(98);
-  logger.debug('Connection ID : '+connectionID.toString('hex'));
-  connectionID.copy(requestMessage, 0);
-  requestMessage.writeUInt32BE(ANNOUNCE_ACTION, 8);
-  transactionID.copy(requestMessage, 12);
-  torrent.infoHash.copy(requestMessage, 16) 
-  requestMessage.write('CLI Torrent Client', 36, 20);
-  const amountDownloadedBuffer = writeInt64BE(torrent.downloaded);
-  amountDownloadedBuffer.copy(requestMessage, 56);
+  const requestMessage = Buffer.alloc(98)
+  logger.debug('Connection ID : '+connectionID.toString('hex'))
+  connectionID.copy(requestMessage, 0)
+  requestMessage.writeUInt32BE(ANNOUNCE_ACTION, 8)
+  transactionID.copy(requestMessage, 12)
+  torrent.infoHash.copy(requestMessage, 16)
+  crypto.randomBytes(20).copy(requestMessage, 36) 
+  const amountDownloadedBuffer = writeInt64BE(torrent.downloaded)
+  amountDownloadedBuffer.copy(requestMessage, 56)
   const amountLeftBuffer = writeInt64BE(torrent.size - torrent.completed)
-  amountLeftBuffer.copy(requestMessage, 64);
+  amountLeftBuffer.copy(requestMessage, 64)
   const amountUploadedBuffer = writeInt64BE(torrent.completed)
-  amountUploadedBuffer.copy(requestMessage, 72);
-  requestMessage.writeUInt32BE(EVENTS[event], 80);
-  requestMessage.writeUInt32BE(0, 84);
-  requestMessage.writeInt32BE(123456, 88);
-  requestMessage.writeInt32BE(-1, 92);
-  requestMessage.writeUInt16BE(torrent.port, 96);
+  amountUploadedBuffer.copy(requestMessage, 72)
+  requestMessage.writeUInt32BE(EVENTS[event], 80)
+  requestMessage.writeUInt32BE(0, 84)
+  requestMessage.writeInt32BE(123456, 88)
+  requestMessage.writeInt32BE(-1, 92)
+  requestMessage.writeUInt16BE(torrent.port, 96)
+  logger.debug('Request Message : ' +requestMessage.toString('hex'))
   return requestMessage
 }
 

@@ -61,30 +61,34 @@ export class Peer extends EventEmitter {
         this.messageParser = peerId ? new MessagesHandler() : new MessagesHandler(true)
         this.initListeners()
 
-        if (!peerId) { //Connection instantiated by us
+        if (!peerId){ //Connection instantiated by us
             
         } else {
-            this.socket.on('data', this.messageParser.parse)
+            this.socket.on('data', (data: Buffer) => {
+                logger.verbose(`Received ${data.length} bytes from ${socket.remoteAddress}`)
+                this.messageParser.parse(data)
+            })
         }
     }
 
     private initListeners(): void {
         this.messageParser.on('peerId', (peerId: Buffer) => this.peerId = peerId)
-        this.messageParser.on('keepAlive', receiveKeepAlive.bind(this))
-        this.messageParser.on('choke', receiveChoke.bind(this))
-        this.messageParser.on('unchoke', receiveUnchoke.bind(this))
-        this.messageParser.on('interested', receiveInterested.bind(this))
-        this.messageParser.on('notInterested', receiveNotInterested.bind(this))
-        this.messageParser.on('have', receiveHave.bind(this))
-        this.messageParser.on('bitfield', receiveBitfield.bind(this))
-        this.messageParser.on('request', receiveRequest.bind(this))
-        this.messageParser.on('piece', receivePiece.bind(this))
-        this.messageParser.on('cancel', receiveCancel.bind(this))
+        this.messageParser.on('keepAlive', this.receiveKeepAlive.bind(this))
+        this.messageParser.on('choke', this.receiveChoke.bind(this))
+        this.messageParser.on('unchoke', this.receiveUnchoke.bind(this))
+        this.messageParser.on('interested', this.receiveInterested.bind(this))
+        this.messageParser.on('notInterested', this.receiveNotInterested.bind(this))
+        this.messageParser.on('have', this.receiveHave.bind(this))
+        this.messageParser.on('bitfield', this.receiveBitfield.bind(this))
+        this.messageParser.on('request', this.receiveRequest.bind(this))
+        this.messageParser.on('piece', this.receivePiece.bind(this))
+        this.messageParser.on('cancel', this.receiveCancel.bind(this))
     }
 
     addMessageToQueue(message: TorrentMessage){
         let self = this
         const messageID = message.messageID
+        logger.debug(`Message ID to Add to Queue : ${messageID}`)
         if(messageID != null){
             switch(messageID){
                 case 0:
@@ -113,7 +117,8 @@ export class Peer extends EventEmitter {
                     break
                 default:
                     self.messageQueue.push(function(cb){
-                        self.socket.write(message.build(), () => {cb()})
+                        self.socket.write(message.build(), () => {
+                            cb()})
                     })
                     break
             }
@@ -123,26 +128,30 @@ export class Peer extends EventEmitter {
     start(): void {
         this.sendUnchoke()
         this.sendBitfield(this.torrent.bitfield)
-        if (!this.torrent.isCompleted){
+        if (!this.torrent.isCompleted()){
             this.sendInterested()
         }
     }
 
     sendUnchoke(): void {
+        logger.debug(`Sending Unchoke to ${this.socket.remoteAddress}`)
         this.addMessageToQueue(new Unchoke())
         this.am_choking = false
     }
 
     sendInterested(): void {
+        logger.debug(`Sending Interested to ${this.socket.remoteAddress}`)
         this.addMessageToQueue(new Interested())
         this.am_interested = true
     }
 
     sendBitfield(bitfield: Buffer): void {
+        logger.debug(`Sending Bitfield to ${this.socket.remoteAddress}`)
         this.addMessageToQueue(new Bitfield(bitfield))
     }
 
     sendRequest(pieceIndex: number): void {
+        logger.debug(`Sending Request to ${this.socket.remoteAddress} for piece ${pieceIndex}`)
         const requestMessages = this.createRequestMessages(pieceIndex)
         requestMessages.forEach((request) => {
             this.addMessageToQueue(request)
@@ -150,6 +159,7 @@ export class Peer extends EventEmitter {
     }
 
     sendHave(pieceIndex: number): void {
+        logger.debug(`Sending Have to ${this.socket.remoteAddress} for piece ${pieceIndex}`)
         this.addMessageToQueue(new Have(pieceIndex))
     }
 
@@ -177,65 +187,57 @@ export class Peer extends EventEmitter {
         return requests
     }
 
-}
+    private receiveKeepAlive() {
 
-const receiveKeepAlive = () => {
-
-}
-
-const receiveChoke = () => {
-    let self = this
-    self.peer_choking = true
-}
-
-const receiveUnchoke = () => {
-    let self = this
-    self.peer_choking = false
-}
-
-const receiveInterested = () => {
-    let self = this
-    self.peer_interested = true
-}
-
-const receiveNotInterested = () => {
-    let self = this
-    self.peer_interested = false
-}
-
-const receiveHave = (pieceIndex: number) => {
-    let self = this
-    self.peer_bitfield = Utils.updateBitfield(self.peer_bitfield, pieceIndex)
-}
-
-const receiveBitfield = (bitfield: Buffer) => {
-    let self = this
-    self.peer_bitfield = bitfield
-}
-
-const receiveRequest = (index: number, begin: number, length: number) => {
-    let self = this
-    if(self.torrent.containsPiece(index)){
-        self.torrent.read(index, begin, length).then(function(chunk){
-            const message = new Piece(index, begin, chunk)
-            self.addMessageToQueue(message)
-        })
     }
-}
 
-const receivePiece = async (index: number, begin: number, block: Buffer) => {
-    let self = this
-    if(!self.torrent.containsPiece(index)){
-        const isPieceCompleted: boolean = await self.torrent.write(index, begin, block)
-        if (isPieceCompleted){
-            self.nbPiecesCurrentlyDownloading -= 1
+    private receiveChoke() {
+        this.peer_choking = true
+    }
+
+    private receiveUnchoke() {
+        this.peer_choking = false
+        this.emit('unchoked')
+    }
+
+    private receiveInterested() {
+        this.peer_interested = true
+    }
+
+    private receiveNotInterested() {
+        this.peer_interested = false
+    }
+
+    private receiveHave(pieceIndex: number) {
+        this.peer_bitfield = Utils.updateBitfield(this.peer_bitfield, pieceIndex)
+    }
+
+    private receiveBitfield(bitfield: Buffer){
+        this.peer_bitfield = bitfield
+    }
+
+    private receiveRequest(index: number, begin: number, length: number) {
+        if(this.torrent.containsPiece(index)){
+            this.torrent.read(index, begin, length).then(function(chunk){
+                const message = new Piece(index, begin, chunk)
+                this.addMessageToQueue(message)
+            })
         }
     }
-}
 
-const receiveCancel = (index: number, begin: number, length: number) => {
-    let self = this
-    //self.torrent.cancel(index, begin, length)
+    private async receivePiece(index: number, begin: number, block: Buffer) {
+        if(!this.torrent.containsPiece(index)){
+            const isPieceCompleted: boolean = await this.torrent.write(index, begin, block)
+            if (isPieceCompleted){
+                this.nbPiecesCurrentlyDownloading -= 1
+            }
+        }
+    }
+
+    private receiveCancel(index: number, begin: number, length: number) {
+        let self = this
+        //self.torrent.cancel(index, begin, length)
+    }
 }
 
 const createBlockRequests = (pieceLength: number, blockLength: number): {begin: number, length: number}[] => {

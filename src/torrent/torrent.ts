@@ -1,7 +1,7 @@
 import { TorrentDict } from './types'
 import { EventEmitter } from 'events'
 import TorrentDisk from '../disk/torrentDisk'
-import { Tracker } from '../tracker/tracker'
+import { Tracker, TrackerResponse } from '../tracker/tracker'
 import { HTTPTracker } from '../tracker/httpTracker'
 import { UDPTracker } from '../tracker/udpTracker'
 import * as PeerManager from '../peer/peerManager'
@@ -16,10 +16,11 @@ import * as Handshake from '../peer/handshake'
 import { Maybe } from 'monet'
 import * as path from 'path'
 import * as _ from 'underscore'
+import { createHash, Hash, randomBytes } from 'crypto'
 
 const udpAddressRegex = /^(udp:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
 const httpAddressRegex = /^(http:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
-const MAX_ACTIVE_PEERS = 5 ;
+const MAX_ACTIVE_PEERS = 1 ;
 
 export class Torrent extends EventEmitter {
     metadata: TorrentDict
@@ -42,7 +43,7 @@ export class Torrent extends EventEmitter {
     port: number
     lastKnownPeers: string[]
     activePeers: Peer[] = []
-    actualTrackerIndex: number = 0
+    actualTrackerIndex: number = 1
     activeTracker: Tracker
     trackers: string[]
     
@@ -51,11 +52,14 @@ export class Torrent extends EventEmitter {
 
     constructor(meta: TorrentDict, filepath: string){
         super()
+
+        const sha1Hash: Hash = createHash('sha1')
+
         this.metadata = meta
         this.name = meta.info.name
         this.filepath = filepath
         this.trackers = getTrackersFromTorrentDict(meta)
-        this.infoHash = BencodeUtils.encode(meta.info)
+        this.infoHash = sha1Hash.update(BencodeUtils.encode(meta.info)).digest()
         this.disk = new TorrentDisk(meta, path.dirname(filepath))
         this.pieceRequestGenerator = PeerManager.askPeersForPieces(this)()
     }
@@ -63,33 +67,38 @@ export class Torrent extends EventEmitter {
     async init(){
         //this.initTracker()
         await this.disk.init()
-            .then((status) => this.disk.verify())
-            .then((completed) => {
+            .then((status) => this.disk.getBitfield())
+            .then(({bitfield, completed}) => {
                 this.completed = completed
+                this.bitfield = bitfield
             })
     }
 
-    start(){
+    async start(){
         if(this.trackers.length <= 0){
             logger.error("No valid tracker found. Aborting.");
         } else {
             const maybeTracker: Maybe<Tracker> = this.getHTTPorUDPTracker(this.trackers[this.actualTrackerIndex])
             if (maybeTracker.isSome()){
                 this.activeTracker = maybeTracker.some()
-                this.activeTracker.on("peers", async (peerList: string[]) => {
-                    if(!this.isCompleted()){
-                        const newPeers: Peer[] = await this.lookForNewPeers(peerList)
-                        this.addPeersAndLookForPieces(newPeers)
-                    }   
-                })
-                this.activeTracker.announce("started")
-                this.on(events.HAVE, (index: number) => {
-                    this.askedPieces = R.remove(
-                        R.indexOf(index)(this.askedPieces),
-                        1,
-                        this.askedPieces)
+                try {
+                    const response: TrackerResponse = await this.activeTracker.announce("started")
+                if(!this.isCompleted()){
+                    const { peers } = response
+                    logger.verbose(`Peers : ${R.take(5, peers)}`)
+                    const newPeers: Peer[] = await this.lookForNewPeers(peers)
+                    this.addPeersAndLookForPieces(newPeers)
+                } 
+                    this.on(events.HAVE, (index: number) => {
+                        this.askedPieces = R.remove(
+                            R.indexOf(index)(this.askedPieces),
+                            1,
+                            this.askedPieces)
                     this.lookForNewPieces()
                 })
+                } catch (err){
+
+                }   
             } else {
                 //No tracker
             } 
@@ -114,7 +123,6 @@ export class Torrent extends EventEmitter {
     }
 
     async lookForNewPeers(peerList: string[]): Promise<Peer[]> {
-        let self = this
         const nbPeersToAdd: number = MAX_ACTIVE_PEERS - this.activePeers.length
         const unknownPeers: string[] = R.filter((newPeerAddress: string) => {
             return R.all((activePeer: Peer) => activePeer.remoteAddress !== newPeerAddress, this.activePeers)
@@ -130,7 +138,14 @@ export class Torrent extends EventEmitter {
         const newPeers: Peer[] = (() => {
             const somePeers = R.filter<Maybe<Peer>>((maybePeer: Maybe<Peer>) => maybePeer.isSome())(maybePeers)
             const peers: Peer[] = R.map((maybePeer: Maybe<Peer>) => maybePeer.some())(maybePeers)
-            R.forEach((peer: Peer) => peer.start())
+            logger.debug(`new Peers : ${peers.length}`)
+            R.forEach((peer: Peer) => {
+                peer.on('unchoked', () => {
+                    logger.verbose('Peer Unchoked')
+                    this.lookForNewPieces()
+                })
+                peer.start()
+            }, peers)
             return peers
         })()
         
@@ -186,7 +201,10 @@ export class Torrent extends EventEmitter {
 
 const getPeer = (torrent: Torrent, host: string, port: string): Promise<Maybe<Peer>> => {
     return new Promise((resolve, reject) => {
+        logger.verbose(`Connecting to ${host} at port ${port} for ${torrent.name}`)
         const timer = setTimeout(() => {
+            logger.verbose(`${socket.remoteAddress} : Timeout of 10 seconds exceeded. Aborting Connection.`)
+            //socket.destroy()
             resolve(Maybe.None())
         }, 10000)
         const socket: net.Socket = net.createConnection({
@@ -194,16 +212,23 @@ const getPeer = (torrent: Torrent, host: string, port: string): Promise<Maybe<Pe
             port: parseInt(port)
         }, 
         () => {
+            logger.verbose(`Connected to ${socket.remoteAddress}`)
+            socket.on('error', (err: Error) => {
+                logger.error(err.message)
+                resolve(Maybe.None())
+            })
             socket.once('data', (chunk: Buffer) => {
+                logger.verbose(`Received ${chunk.length} bytes from ${socket.remoteAddress} : ${chunk.toString('hex')}`)
                 Handshake.parse(chunk).then(({peerId, infoHash}) => {
+                  logger.verbose('Handshake parsed without errors')
                   if (!infoHash.equals(torrent.infoHash)){
                     logger.verbose("Peer Id Hash and Torrent Hash does not match. Aborting")
                     socket.end()
                     resolve(Maybe.None())
                     
                   } else {
-                      logger.verbose(`Connecting to ${socket.remoteAddress} for Torrent : ${torrent.name}`)
-                    resolve(Maybe.Some(new Peer(torrent, socket, peerId)))
+                      logger.verbose(`Connection succeded to ${socket.remoteAddress} for Torrent : ${torrent.name}`)
+                      resolve(Maybe.Some(new Peer(torrent, socket, peerId)))
                   }
                 }).catch((failure) => {
                   logger.error("Error in Parsing Handshake. Aborting Connection")
@@ -213,7 +238,9 @@ const getPeer = (torrent: Torrent, host: string, port: string): Promise<Maybe<Pe
                     clearTimeout(timer)
                 })
               })
-            const handshake: Buffer = Handshake.build(torrent.infoHash, null)
+            const handshake: Buffer = Handshake.build(torrent.infoHash, randomBytes(20))
+            logger.verbose(`Handshake Length : ${handshake.length}`)
+            logger.verbose(`Handshake : ${handshake.toString('hex')}`)
             socket.write(handshake, 'utf8', () => {
             logger.verbose(`Handshake sent to ${socket.remoteAddress}`)
             })

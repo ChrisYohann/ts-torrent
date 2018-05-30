@@ -232,10 +232,8 @@ export default class TorrentDisk {
         }
     }
 
-    async getBitfield(): Promise<Buffer> {
-        if (this.bitfield){
-            return this.bitfield
-        }
+    async getBitfield(): Promise<{bitfield: Buffer, completed: number}> {
+        let completed = 0
         const pieces = this.pieces
         const nbPieces = this.pieces.length
         const bitFieldBuffer: Buffer = Buffer.alloc((nbPieces >> 3) + ((nbPieces & 0x7) != 0 ? 1 : 0))
@@ -243,16 +241,19 @@ export default class TorrentDisk {
         const verifiedPieces = await (Promise.all(promises))
         verifiedPieces.forEach((isPieceCompleteAndValid: boolean, pieceIndex: number) => {
             bitFieldBuffer[pieceIndex >> 3] |= ( isPieceCompleteAndValid ? 0x80 : 0) >> (pieceIndex & 0x7)
+            if (isPieceCompleteAndValid){
+                completed += pieces[pieceIndex].length
+            }
         })
-        this.bitfield = bitFieldBuffer
-        return this.bitfield
+        logger.info(JSON.stringify({name : this.infoDictionary.name, completed}))
+        return { bitfield: bitFieldBuffer, completed }
+        
     }
 
     async verify(): Promise<number> {
         const pieces = this.pieces
         const blocksCompleted: number[] = await Promise.all(pieces.map(async (piece: Piece, index: number) => {
             const isPieceCompleted: boolean = await piece.passSha1Verification()
-            logger.info(`Index : ${index} ${isPieceCompleted}`)
             return isPieceCompleted ? piece.length : 0
         }))
         const completed: number = R.sum(blocksCompleted)

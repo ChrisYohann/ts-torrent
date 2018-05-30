@@ -5,13 +5,7 @@ export interface TrackerResponse {
     interval: number
     seeders: number
     leechers: number
-    peers ?: string[] | PeerDictionary[]
-}
-
-export interface PeerDictionary {
-    peerId: Buffer
-    ip: string
-    port: number
+    peers ?: string[]
 }
 
 export abstract class Tracker extends EventEmitter {
@@ -27,6 +21,6 @@ export abstract class Tracker extends EventEmitter {
         this.torrent = torrent
     }
 
-    abstract announce(event: String): void
+    abstract announce(event: String): Promise<TrackerResponse>
 }
 

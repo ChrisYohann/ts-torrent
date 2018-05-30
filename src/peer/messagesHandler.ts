@@ -8,7 +8,6 @@ const MESSAGE_ID_MIN = 0;
 const MESSAGE_MAX_LENGTH = (1<<14) + 13;
 const MESSAGE_MIN_LENGTH = 0;
 
-
 const AWAIT_PEER_ID = 0;
 const DECODING_LENGTH_PREFIX = 1;
 const DECODING_BYTE_ID = 2;
@@ -38,14 +37,19 @@ export default class MessagesHandler extends EventEmitter{
   }
   
   parse(chunk: Buffer): TorrentMessages.TorrentMessage[] {
+    const self = this
     const result: TorrentMessages.TorrentMessage[] = []
-    logger.verbose("Incoming Chunk. Length : "+chunk.length+" Offset : "+this.offset)
-    while(this.offset < chunk.length){
-      const message: TorrentMessages.TorrentMessage = this.parseMessage(chunk, true);
+    logger.verbose('salut before')
+    logger.verbose(`Incoming Chunk. Length : ${chunk.length} Offset : ${self.offset}`)
+    logger.verbose('salut')
+    while(self.offset < chunk.length){
+      logger.debug('Parsing Message')
+      const message: TorrentMessages.TorrentMessage = self.parseMessage(chunk, true);
       if(message){
         result.push(message);
       }
     }
+    logger.debug('return')
     return result;
   }
 
@@ -55,6 +59,7 @@ export default class MessagesHandler extends EventEmitter{
     this.partialMessageID = newResetStatus ? -1 : this.partialMessageID;
     this.partialLengthPrefix = Buffer.alloc(0);
     this.partialPayload = Buffer.alloc(0);
+    this.offset = 0
   }
 
   private parseMessage(chunk: Buffer, isPartial: boolean): TorrentMessages.TorrentMessage{
