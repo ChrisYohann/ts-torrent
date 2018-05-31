@@ -1,8 +1,9 @@
 export const HAVE: string = 'have'
 
-export const PEERS_FROM_TRACKERS: string = 'peers'
-export const PEERS_ADDED_TORRENT: string = 'peersAdded'
 export const PEER_ADDED_TORRENT: string = 'peerAdded'
+export const INVALID_PEER: string = 'invalidPeer'
+export const PEER_ID_RECEIVED: string = 'peerId'
+export const CONNECTION_SUCCESSFUL: string = 'connectionSuccess'
 
 export const MANAGER_TORRENT_ADDED: string = 'torrentAdded'
 export const MANAGER_TORRENT_DELETED: string = 'torrentDeleted'

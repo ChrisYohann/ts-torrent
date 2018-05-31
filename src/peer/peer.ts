@@ -17,11 +17,29 @@ import {
     Cancel,
     KeepAlive
 } from './torrentMessages'
-import { Socket } from 'net'
+import { Socket, createConnection } from 'net'
 import { Torrent } from '../Torrent/torrent'
 import { logger } from '../logging/logger'
+import { INVALID_PEER, PEER_ID_RECEIVED, CONNECTION_SUCCESSFUL } from '../events/events'
+import { randomBytes } from 'crypto'
+import * as Handshake from '../peer/handshake'
+
 
 const Queue = require('queue')
+
+export interface InitiateConnectionParams {
+    host: string
+    port: number
+}
+
+export interface ReceivingConnectionParams {
+    socket: Socket
+    peerId?: Buffer
+}
+
+export type ConnectionParams = InitiateConnectionParams | ReceivingConnectionParams
+
+const instanceOfInitiateConnectionParams = (params: ConnectionParams): params is InitiateConnectionParams => 'host' in R.keys(params)
 
 export class Peer extends EventEmitter {
     
@@ -41,12 +59,10 @@ export class Peer extends EventEmitter {
 
     messageParser: MessagesHandler
 
-    constructor(torrent, socket: Socket, peerId?: Buffer){
+    constructor(torrent: Torrent, params: ConnectionParams){
         super()
+        const self = this
         this.torrent = torrent
-        this.peerId = peerId
-        this.socket = socket
-        this.remoteAddress = socket.remoteAddress
 
         //Status Fields
         this.am_choking = true
@@ -58,16 +74,49 @@ export class Peer extends EventEmitter {
         this.nbPiecesCurrentlyDownloading = 0
 
         this.peer_bitfield = null
-        this.messageParser = peerId ? new MessagesHandler() : new MessagesHandler(true)
+        //this.messageParser = peerId ? new MessagesHandler() : new MessagesHandler(true)
         this.initListeners()
 
-        if (!peerId){ //Connection instantiated by us
+        if (instanceOfInitiateConnectionParams(params)){
+            const socket = new Socket()
             
-        } else {
-            this.socket.on('data', (data: Buffer) => {
-                logger.verbose(`Received ${data.length} bytes from ${socket.remoteAddress}`)
-                this.messageParser.parse(data)
+            this.messageParser = new MessagesHandler(torrent.infoHash, true)
+            this.messageParser.on(PEER_ID_RECEIVED, (peerId: Buffer) => {
+                this.peerId = peerId
+                this.emit(CONNECTION_SUCCESSFUL)
             })
+            this.messageParser.on(INVALID_PEER, () => {
+                this.emit(INVALID_PEER)
+                socket.end()
+            })
+            
+            const timer = setTimeout(() => {
+                logger.verbose(`Timeout of 10 seconds exceeded. Aborting Connection.`)
+                socket.destroy()
+                this.emit(INVALID_PEER)
+            }, 10000)
+
+            const { host, port } = params
+            logger.verbose(`Connecting to ${host} at port ${port} for ${torrent.name}`)
+            socket.connect(params, () => {
+                logger.verbose(`Connected to ${socket.remoteAddress}`)
+                this.socket = socket
+                socket.on('error', (err: Error) => {
+                    logger.error(err.message)
+                    socket.end()
+                    this.emit(INVALID_PEER)
+                })
+                socket.on('data', (data: Buffer) => {
+                    logger.verbose(`Received ${data.length} bytes from ${socket.remoteAddress}`)
+                    this.messageParser.parse(data)
+                })
+                const handshake: Buffer = Handshake.build(torrent.infoHash, randomBytes(20))
+                logger.verbose(`Handshake Length : ${handshake.length}`)
+                logger.verbose(`Handshake : ${handshake.toString('hex')}`)
+                socket.write(handshake, 'utf8', () => {
+                logger.verbose(`Handshake sent to ${socket.remoteAddress}`)
+                })
+            })  
         }
     }
 

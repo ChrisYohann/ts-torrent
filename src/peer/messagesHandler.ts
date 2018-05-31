@@ -2,6 +2,9 @@ import * as TorrentMessages from './torrentMessages'
 import { logger } from '../logging/logger'
 import * as util from 'util'
 import { EventEmitter } from 'events'
+import * as Handshake from './handshake'
+import { Either, Right, Left } from 'monet'
+import { PEER_ID_RECEIVED, INVALID_PEER } from '../events/events';
 
 const MESSAGE_ID_MAX = 9;
 const MESSAGE_ID_MIN = 0;
@@ -14,7 +17,7 @@ const DECODING_BYTE_ID = 2;
 const DECODING_PAYLOAD = 3;
 
 export enum handlerStatus {
-  AWAIT_PEER_ID = 0,
+  AWAIT_HANDSHAKE = 0,
   DECODING_LENGTH_PREFIX = 1,
   DECODING_BYTE_ID = 2,
   DECODING_PAYLOAD = 3,
@@ -22,6 +25,7 @@ export enum handlerStatus {
 
 
 export default class MessagesHandler extends EventEmitter{
+  infoHash: Buffer
   offset: number
   partialStatus: handlerStatus
   partialMessageID: number
@@ -29,27 +33,37 @@ export default class MessagesHandler extends EventEmitter{
   partialPayload: Buffer
   partialPeerID: Buffer
 
-  constructor(waitingForPeerId?: boolean){
+  constructor(infoHash: Buffer, waitingForPeerId?: boolean){
     super()
+    this.infoHash = infoHash
     this.offset = 0
-    this.partialStatus = waitingForPeerId ? handlerStatus.AWAIT_PEER_ID : handlerStatus.DECODING_LENGTH_PREFIX
+    this.partialStatus = waitingForPeerId ? handlerStatus.AWAIT_HANDSHAKE : handlerStatus.DECODING_LENGTH_PREFIX
     this.clear(false)
   }
   
   parse(chunk: Buffer): TorrentMessages.TorrentMessage[] {
     const self = this
     const result: TorrentMessages.TorrentMessage[] = []
-    logger.verbose('salut before')
-    logger.verbose(`Incoming Chunk. Length : ${chunk.length} Offset : ${self.offset}`)
-    logger.verbose('salut')
+    self.offset = 0
+    logger.verbose(`Incoming Chunk. Length : ${chunk.length}`)
+    if (this.partialStatus === handlerStatus.AWAIT_HANDSHAKE){
+      this.decodeHandshake(chunk).cata(
+        (err: Error) => {
+          this.emit(INVALID_PEER)
+        },
+        ({infoHash, peerId}) => {
+          this.emit(PEER_ID_RECEIVED, peerId)
+          this.offset += infoHash.length
+          this.partialStatus += 1
+        }
+      )
+    }
     while(self.offset < chunk.length){
-      logger.debug('Parsing Message')
       const message: TorrentMessages.TorrentMessage = self.parseMessage(chunk, true);
       if(message){
         result.push(message);
       }
     }
-    logger.debug('return')
     return result;
   }
 
@@ -59,7 +73,7 @@ export default class MessagesHandler extends EventEmitter{
     this.partialMessageID = newResetStatus ? -1 : this.partialMessageID;
     this.partialLengthPrefix = Buffer.alloc(0);
     this.partialPayload = Buffer.alloc(0);
-    this.offset = 0
+    //this.offset = 0
   }
 
   private parseMessage(chunk: Buffer, isPartial: boolean): TorrentMessages.TorrentMessage{
@@ -69,7 +83,7 @@ export default class MessagesHandler extends EventEmitter{
     logger.verbose("Status : "+status);
     try{
       switch(status){
-        case handlerStatus.AWAIT_PEER_ID:
+        case handlerStatus.AWAIT_HANDSHAKE:
           const peerId = this.decodePeerID(chunk);
           self.emit('peerId', peerId)
         case handlerStatus.DECODING_LENGTH_PREFIX:
@@ -160,6 +174,25 @@ export default class MessagesHandler extends EventEmitter{
           logger.verbose("Message ID ("+messageID+") cannot be parsed");
           return null ;
     }
+  }
+
+  private decodeHandshake(chunk: Buffer): Either<Error, {peerId: Buffer, infoHash: Buffer}>{
+    return Handshake.parse(chunk).cata(
+      (err: Error) => {
+        logger.error(`Error while decoding Handshake : ${err.message}`)
+        return Left(err)
+      },
+      ({peerId, infoHash}) => {
+        logger.verbose('Handshake parsed without errors')
+        if (infoHash.equals(this.infoHash)){
+          return Right({peerId, infoHash})
+        } else {
+          const message = "Peer Id Info Hash and Torrent Info Hash do not match. Aborting"
+          logger.verbose(message)
+          return Left(new Error(message))
+        }
+      }
+    )
   }
 
   private decodePeerID(chunk: Buffer): Buffer {

@@ -17,6 +17,7 @@ const { TorrentManager } = require('./torrent/torrentManager')
 const Peer = require('./peer/peer')
 const { parse, create } = require('./peer/handshake')
 const { EventEmitter } = require('events')
+const { randomBytes } = require('crypto') 
 const util = require('util')
 const events = require('./events/events')
 
@@ -57,7 +58,7 @@ const connectionListener = (torrentManager) => (socket) => {
       } else {
         const torrent = torrentsWithSameInfoHash[0]
         logger.verbose(`Peer ${socket.remoteAddress} is connecting for Torrent : ${torrent.name}`)
-        const handshakeResponse = create(infoHash, null)
+        const handshakeResponse = create(infoHash, randomBytes(20))
         const peer = new Peer(torrent, socket, peerId)
         torrent.addPeer(peer)
         socket.write(handshakeResponse)

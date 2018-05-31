@@ -2,6 +2,7 @@ import * as R from 'ramda'
 import * as _ from 'underscore'
 import { Peer } from './peer'
 import { Torrent } from '../Torrent/torrent'
+import { logger } from '../logging/logger';
 const MAX_NB_PIECES_BY_PEER = 3 
 
 export type PieceWithCount = {pieceIndex: number, count: number}
@@ -84,6 +85,9 @@ export const askPeersForPieces = (torrent: Torrent) => {
             const nbPieces = torrent.nbPieces
             const nonRequestedPieces: number[] = getNonRequestedPieces(torrent)
             const requests: {peer: Peer, pieceIndex: number}[] = preparePiecesRequests(nbPieces)(peers, nonRequestedPieces)
+            R.forEach((request: {peer: Peer, pieceIndex: number}) => {
+                logger.verbose(`Peer ${request.peer.socket.remoteAddress} ; piece Index : ${request.pieceIndex}`)
+            })
             yield requests
         }
     }
