@@ -17,7 +17,7 @@ import { Maybe } from 'monet'
 import * as path from 'path'
 import * as _ from 'underscore'
 import { createHash, Hash, randomBytes } from 'crypto'
-import { CONNECTION_SUCCESSFUL } from '../events/events'
+import { CONNECTION_SUCCESSFUL, INVALID_PEER } from '../events/events'
 
 const udpAddressRegex = /^(udp:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
 const httpAddressRegex = /^(http:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
@@ -42,7 +42,7 @@ export class Torrent extends EventEmitter {
     bitrate: number
 
     port: number
-    lastKnownPeers: string[]
+    lastKnownPeers: {host: string; port: number}[]
     activePeers: Peer[] = []
     actualTrackerIndex: number = 1
     activeTracker: Tracker
@@ -63,34 +63,38 @@ export class Torrent extends EventEmitter {
         this.infoHash = sha1Hash.update(BencodeUtils.encode(meta.info)).digest()
         this.disk = new TorrentDisk(meta, path.dirname(filepath))
         this.pieceRequestGenerator = PeerManager.askPeersForPieces(this)()
+        this.askedPieces = []
     }
 
     async init(){
-        //this.initTracker()
         await this.disk.init()
             .then((status) => this.disk.getBitfield())
             .then(({bitfield, completed}) => {
                 this.completed = completed
                 this.bitfield = bitfield
+                this.nbPieces = this.disk.infoDictionary.nbPieces
             })
     }
 
     async start(){
         if(this.trackers.length <= 0){
-            logger.error("No valid tracker found. Aborting.");
+            logger.error('No valid tracker found. Aborting.');
         } else {
             const maybeTracker: Maybe<Tracker> = this.getHTTPorUDPTracker(this.trackers[this.actualTrackerIndex])
             if (maybeTracker.isSome()){
                 this.activeTracker = maybeTracker.some()
                 try {
-                    const response: TrackerResponse = await this.activeTracker.announce("started")
+                    const response: TrackerResponse = await this.activeTracker.announce('started')
                 if(!this.isCompleted()){
                     const { peers } = response
+                    this.lastKnownPeers = R.map((peerAddress: string) => {
+                        const [host, portAsString]: [string, string] = peerAddress.split(':') as [string, string]
+                        const port: number = parseInt(portAsString)
+                        return { host, port }
+                    })(_.shuffle(peers))
                     
-                    const shuffledPeers: string[] =  _.shuffle(peers)
-                    logger.verbose(`Peers : ${R.take(5, shuffledPeers)}`)
-                    //const newPeers: Peer[] = await this.lookForNewPeers(shuffledPeers)
-                    //this.addPeersAndLookForPieces(newPeers)
+                    logger.verbose(`First 5 Peers : ${JSON.stringify(R.take(5, this.lastKnownPeers))}`)
+                    this.connectToNewPeers()
                 } 
                     this.on(events.HAVE, (index: number) => {
                         this.askedPieces = R.remove(
@@ -100,10 +104,15 @@ export class Torrent extends EventEmitter {
                     this.lookForNewPieces()
                 })
                 } catch (err){
-
+                    logger.error('Error while attempting to send a request to the tracker. Trying next on the list.')
+                    logger.error(err.message)
+                    this.actualTrackerIndex += 1
+                    //this.start()
                 }   
             } else {
-                //No tracker
+                logger.error('Error while parsing Tracker address. Trying next on the list')
+                this.actualTrackerIndex += 1
+                this.start()
             } 
         }
     }
@@ -114,34 +123,40 @@ export class Torrent extends EventEmitter {
         callback(message)
     }
 
-    addPeersAndLookForPieces(peers: Peer[]): void {
-        this.activePeers = R.concat(this.activePeers, peers)
-        this.lookForNewPieces()
-    }
-
     addPeer(peer: Peer): void {
         this.activePeers = R.append(peer, this.activePeers)
         peer.start()
         this.lookForNewPieces()
     }
 
-    lookForNewPeers(peerList: string[]): void {
+    connectToNewPeers(): void {
+        logger.verbose('Connecting to new Peers')
         const nbPeersToAdd: number = MAX_ACTIVE_PEERS - this.activePeers.length
-        const unknownPeers: string[] = R.filter((newPeerAddress: string) => {
-            return R.all((activePeer: Peer) => activePeer.remoteAddress !== newPeerAddress, this.activePeers)
-        }, peerList)
-        const unknownPeersTruncated: string[] = R.take(nbPeersToAdd, unknownPeers)
+
+        const notAlreadyConnectedPeers: {host: string; port: number}[] = R.filter(({host, port}) => {
+            return R.all((activePeer: Peer) => activePeer.remoteAddress !== host, this.activePeers)
+        }, this.lastKnownPeers)
+
+        logger.verbose(`Peer List length = ${this.lastKnownPeers.length}. Unknown Peers : ${notAlreadyConnectedPeers.length}`)
+
+        const newPeersToConnect: {host: string; port: number}[] = R.take(nbPeersToAdd, notAlreadyConnectedPeers)
+        this.lastKnownPeers = R.slice(nbPeersToAdd, Infinity, notAlreadyConnectedPeers)
+        R.forEach(({host, port}) => {
+            this.getPeer(this, host, port)
+        })(newPeersToConnect)
+        
     }
 
-    getPeer(torrent: Torrent, host: string, port: string): void {
-        const parsedPort = parseInt(port)
-        const peer: Peer = new Peer(torrent, {host, port: parsedPort})
+    getPeer(torrent: Torrent, host: string, port: number): void {
+        const peer: Peer = new Peer(torrent, {host, port})
+        
         peer.on(CONNECTION_SUCCESSFUL, () => {
             logger.verbose(`Successfully connected to ${host} for torrent ${torrent.name}`)
             this.addPeer(peer)
         })
         peer.on(INVALID_PEER, () => {
-            
+            logger.verbose(`Error while creating connection with ${host}. Aborting.`)
+            this.connectToNewPeers()
         })
     }
 

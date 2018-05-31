@@ -49,21 +49,24 @@ export default class MessagesHandler extends EventEmitter{
     if (this.partialStatus === handlerStatus.AWAIT_HANDSHAKE){
       this.decodeHandshake(chunk).cata(
         (err: Error) => {
+          logger.verbose('Invalid handshake')
           this.emit(INVALID_PEER)
         },
         ({infoHash, peerId}) => {
+          logger.verbose('Handshake is Valid.')
           this.emit(PEER_ID_RECEIVED, peerId)
           this.offset += infoHash.length
           this.partialStatus += 1
         }
       )
     }
-    while(self.offset < chunk.length){
+    logger.verbose(`New offset : ${this.offset}`)
+    /*while(self.offset < chunk.length){
       const message: TorrentMessages.TorrentMessage = self.parseMessage(chunk, true);
       if(message){
         result.push(message);
       }
-    }
+    }*/
     return result;
   }
 
@@ -73,7 +76,6 @@ export default class MessagesHandler extends EventEmitter{
     this.partialMessageID = newResetStatus ? -1 : this.partialMessageID;
     this.partialLengthPrefix = Buffer.alloc(0);
     this.partialPayload = Buffer.alloc(0);
-    //this.offset = 0
   }
 
   private parseMessage(chunk: Buffer, isPartial: boolean): TorrentMessages.TorrentMessage{
@@ -83,9 +85,6 @@ export default class MessagesHandler extends EventEmitter{
     logger.verbose("Status : "+status);
     try{
       switch(status){
-        case handlerStatus.AWAIT_HANDSHAKE:
-          const peerId = this.decodePeerID(chunk);
-          self.emit('peerId', peerId)
         case handlerStatus.DECODING_LENGTH_PREFIX:
           const lengthPrefix = this.decodeLengthPrefix(chunk);
           logger.verbose("Length : "+lengthPrefix);
@@ -123,6 +122,7 @@ export default class MessagesHandler extends EventEmitter{
               default:
                       const payload = this.decodePayload(chunk);
                       const message = this.parsePayload(self.partialMessageID, payload);
+                      console.log()
                       self.clear();
                       return message;
             }
@@ -177,6 +177,7 @@ export default class MessagesHandler extends EventEmitter{
   }
 
   private decodeHandshake(chunk: Buffer): Either<Error, {peerId: Buffer, infoHash: Buffer}>{
+    logger.debug('Decoding Handshake')
     return Handshake.parse(chunk).cata(
       (err: Error) => {
         logger.error(`Error while decoding Handshake : ${err.message}`)
@@ -193,28 +194,6 @@ export default class MessagesHandler extends EventEmitter{
         }
       }
     )
-  }
-
-  private decodePeerID(chunk: Buffer): Buffer {
-    let self = this;
-    if(self.offset < chunk.length){
-      const remainingBytes = 20 - self.partialPeerID.length;
-      const otherPart = chunk.slice(self.offset, remainingBytes);
-      self.partialPeerID = Buffer.concat([self.partialPeerID, otherPart]);
-      self.offset += otherPart.length;
-      if(self.partialPeerID.length == 20){
-        self.partialStatus++ ;
-        return self.partialPeerID;
-      } else {
-        let message = `Only ${self.partialPeerID.length} bytes for peerID. Waiting for next chunk.`
-        logger.verbose(message);
-        throw message;
-      }
-    } else {
-      const message = `Only ${self.partialPeerID.length} bytes for peerID. Waiting for next chunk.`
-      logger.verbose(message);
-      throw message;
-    }
   }
 
   private decodeLengthPrefix(chunk: Buffer): number {

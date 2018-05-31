@@ -39,7 +39,7 @@ export interface ReceivingConnectionParams {
 
 export type ConnectionParams = InitiateConnectionParams | ReceivingConnectionParams
 
-const instanceOfInitiateConnectionParams = (params: ConnectionParams): params is InitiateConnectionParams => 'host' in R.keys(params)
+const instanceOfInitiateConnectionParams = (params: ConnectionParams): params is InitiateConnectionParams => 'host' in params
 
 export class Peer extends EventEmitter {
     
@@ -75,8 +75,8 @@ export class Peer extends EventEmitter {
 
         this.peer_bitfield = null
         //this.messageParser = peerId ? new MessagesHandler() : new MessagesHandler(true)
-        this.initListeners()
 
+        logger.verbose(`Is instance of initiate connection ${'host' in params}`)
         if (instanceOfInitiateConnectionParams(params)){
             const socket = new Socket()
             
@@ -89,6 +89,7 @@ export class Peer extends EventEmitter {
                 this.emit(INVALID_PEER)
                 socket.end()
             })
+            this.initListeners()
             
             const timer = setTimeout(() => {
                 logger.verbose(`Timeout of 10 seconds exceeded. Aborting Connection.`)
@@ -98,14 +99,14 @@ export class Peer extends EventEmitter {
 
             const { host, port } = params
             logger.verbose(`Connecting to ${host} at port ${port} for ${torrent.name}`)
+            socket.on('error', (err: Error) => {
+                logger.error(err.message)
+                socket.destroy()
+                this.emit(INVALID_PEER)
+            })
             socket.connect(params, () => {
                 logger.verbose(`Connected to ${socket.remoteAddress}`)
                 this.socket = socket
-                socket.on('error', (err: Error) => {
-                    logger.error(err.message)
-                    socket.end()
-                    this.emit(INVALID_PEER)
-                })
                 socket.on('data', (data: Buffer) => {
                     logger.verbose(`Received ${data.length} bytes from ${socket.remoteAddress}`)
                     this.messageParser.parse(data)

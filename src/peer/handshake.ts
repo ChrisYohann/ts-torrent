@@ -10,7 +10,7 @@ const protocolName: Buffer = Buffer.from(PROTOCOL_NAME, 'utf8')
 const reservedBytes: Buffer = Buffer.alloc(8)
 
 const ensureHandshakeLength = (chunk: Buffer): Either<Error, Buffer> => {
-  if(chunk.length < HANDHSAKE_LENGTH){
+  if(chunk.length >= HANDHSAKE_LENGTH){
     return Right(chunk)
   } else {
     const message = `Invalid Handshake length (${chunk.length})`
