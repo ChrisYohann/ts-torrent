@@ -95,7 +95,7 @@ export class Peer extends EventEmitter {
                 logger.verbose(`Timeout of 10 seconds exceeded. Aborting Connection.`)
                 socket.destroy()
                 this.emit(INVALID_PEER)
-            }, 10000)
+            }, 5000)
 
             const { host, port } = params
             logger.verbose(`Connecting to ${host} at port ${port} for ${torrent.name}`)
@@ -104,9 +104,15 @@ export class Peer extends EventEmitter {
                 socket.destroy()
                 this.emit(INVALID_PEER)
             })
+
             socket.connect(params, () => {
                 logger.verbose(`Connected to ${socket.remoteAddress}`)
                 this.socket = socket
+
+                socket.once('data', (data: Buffer) => {
+                    clearTimeout(timer)
+                })
+
                 socket.on('data', (data: Buffer) => {
                     logger.verbose(`Received ${data.length} bytes from ${socket.remoteAddress}`)
                     this.messageParser.parse(data)

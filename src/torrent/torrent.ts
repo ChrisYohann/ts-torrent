@@ -123,12 +123,6 @@ export class Torrent extends EventEmitter {
         callback(message)
     }
 
-    addPeer(peer: Peer): void {
-        this.activePeers = R.append(peer, this.activePeers)
-        peer.start()
-        this.lookForNewPieces()
-    }
-
     connectToNewPeers(): void {
         logger.verbose('Connecting to new Peers')
         const nbPeersToAdd: number = MAX_ACTIVE_PEERS - this.activePeers.length
@@ -152,7 +146,9 @@ export class Torrent extends EventEmitter {
         
         peer.on(CONNECTION_SUCCESSFUL, () => {
             logger.verbose(`Successfully connected to ${host} for torrent ${torrent.name}`)
-            this.addPeer(peer)
+            this.activePeers = R.append(peer, this.activePeers)
+            peer.start()
+            this.lookForNewPieces()
         })
         peer.on(INVALID_PEER, () => {
             logger.verbose(`Error while creating connection with ${host}. Aborting.`)
