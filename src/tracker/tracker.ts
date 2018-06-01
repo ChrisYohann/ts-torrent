@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { Torrent } from '../Torrent/torrent';
+import { Torrent } from '../torrent/torrent';
 
 export interface TrackerResponse {
     interval: number
