@@ -5,7 +5,7 @@ import * as Utils from '../utils/utils'
 import * as util from 'util'
 import * as url from 'url'
 import { Tracker, TrackerResponse } from './tracker'
-import { Torrent } from '../Torrent/torrent'
+import { Torrent } from '../torrent/torrent'
 import { resolve } from 'path'
 import { Either, Left, Right } from 'monet'
 
