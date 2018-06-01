@@ -95,7 +95,7 @@ export class Peer extends EventEmitter {
                 logger.verbose(`Timeout of 10 seconds exceeded. Aborting Connection.`)
                 socket.destroy()
                 this.emit(INVALID_PEER)
-            }, 5000)
+            }, 3000)
 
             const { host, port } = params
             logger.verbose(`Connecting to ${host} at port ${port} for ${torrent.name}`)

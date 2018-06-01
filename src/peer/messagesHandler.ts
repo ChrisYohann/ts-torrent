@@ -36,16 +36,17 @@ export default class MessagesHandler extends EventEmitter{
     const self = this
     let chunk: Buffer = data
     const result: TorrentMessages.TorrentMessage[] = []
-    logger.verbose(`Incoming Chunk. Length : ${data.length}`)
+    console.log(`Incoming Chunk. Length : ${data.length}`)
+    console.log(`Incoming Chunk. Length : ${data.length}`)
     
     if (this.partialStatus === handlerStatus.AWAIT_HANDSHAKE){
       this.decodeHandshake(data).cata(
         (err: Error) => {
-          logger.verbose('Invalid handshake')
+          console.log('Invalid handshake')
           this.emit(INVALID_PEER)
         },
         ({infoHash, peerId}) => {
-          logger.verbose('Handshake is Valid.')
+          console.log('Handshake is Valid.')
           this.emit(PEER_ID_RECEIVED, peerId)
           chunk = chunk.slice(Handshake.HANDHSAKE_LENGTH)
           this.partialStatus += 1
@@ -56,7 +57,7 @@ export default class MessagesHandler extends EventEmitter{
     while (chunk.length > 0){
       this.parsePartial(chunk).cata(
         ({partialMessage}) => {
-          logger.verbose('PartialMessage')
+          console.log('PartialMessage')
           chunk = Buffer.alloc(0)
         },
         ({message, buffer}) => {
@@ -85,12 +86,12 @@ export default class MessagesHandler extends EventEmitter{
         return Left(err)
       },
       ({peerId, infoHash}) => {
-        logger.verbose('Handshake parsed without errors')
+        console.log('Handshake parsed without errors')
         if (infoHash.equals(this.infoHash)){
           return Right({peerId, infoHash})
         } else {
           const message = "Peer Id Info Hash and Torrent Info Hash do not match. Aborting"
-          logger.verbose(message)
+          console.log(message)
           return Left(new Error(message))
         }
       }
@@ -99,6 +100,9 @@ export default class MessagesHandler extends EventEmitter{
 
   private parsePartial(data: Buffer): Either<{ partialMessage: Buffer }, { message : Maybe<TorrentMessages.TorrentMessage>, buffer: Buffer }> {
     let chunk = data
+    console.log(`Partial Message Length : ${this.partialMessage.length}`)
+    console.log(`Chunk Length : ${chunk.length}`)
+    //console.log(``)
     if (this.partialStatus === handlerStatus.DECODING_LENGTH_PREFIX) {
       const remainingBytes: number = 4 - this.partialMessage.length
       const availableBytesLengthPrefix: number = chunk.length
@@ -108,25 +112,31 @@ export default class MessagesHandler extends EventEmitter{
       }
       this.partialMessage = Buffer.concat([this.partialMessage, chunk.slice(0, remainingBytes)])
       chunk = chunk.slice(remainingBytes)
-      this.expectedLength = chunk.readUInt32BE(0)
+      this.expectedLength = this.partialMessage.readInt32BE(0)
+      console.log(`Expected length for next Message : ${this.expectedLength}`)
+      this.partialStatus += 1
     }
-    this.partialStatus += 1
+    
     const availableBytesPayload = chunk.length
-    const remainingBytesPayload = this.partialMessage.length
-    if (remainingBytesPayload > availableBytesPayload) {
+    const remainingBytesToParsePayload = this.expectedLength - this.partialMessage.length + 4
+    
+    console.log(`Avalailable bytes in payload : ${chunk.length}`)
+    console.log(`Remaining Bytes to fully parse payload ${remainingBytesToParsePayload}`)
+    
+    if (remainingBytesToParsePayload > availableBytesPayload) {
       this.partialMessage = Buffer.concat([this.partialMessage, chunk])
       return Left({partialMessage: this.partialMessage})
     }
 
-    this.partialMessage = Buffer.concat([this.partialMessage, chunk.slice(0, remainingBytesPayload)])
-    chunk = chunk.slice(remainingBytesPayload)
+    this.partialMessage = Buffer.concat([this.partialMessage, chunk.slice(0, remainingBytesToParsePayload)])
+    chunk = chunk.slice(remainingBytesToParsePayload)
     const message = this.parseMessage(this.partialMessage)
     return Right({message, buffer: chunk})
   }
 
   private parseMessage(chunk: Buffer): Maybe<TorrentMessages.TorrentMessage> {
     const lengthPrefix: number = chunk.readInt32BE(0)
-    logger.verbose("Length : "+lengthPrefix)
+    console.log("Length Prefix : "+lengthPrefix)
     
     if(lengthPrefix < MESSAGE_MIN_LENGTH || lengthPrefix > MESSAGE_MAX_LENGTH){
       logger.error("Error : Invalid length message for Decoding ("+lengthPrefix+")")
@@ -161,36 +171,39 @@ export default class MessagesHandler extends EventEmitter{
           return Maybe.of(new TorrentMessages.NotInterested())
           case 4 :
           const pieceIndex = chunk.readInt32BE(5)
-          logger.verbose("Have : Index = " + pieceIndex)
+          console.log("Have : Index = " + pieceIndex)
           this.emit("have", pieceIndex)
+          this.clear()
           return Maybe.of(new TorrentMessages.Have(pieceIndex))
       case 5 :
           const bitfieldBuffer = chunk.slice(5)
           this.emit("bitfield", bitfieldBuffer)
+          console.log('Bitfield')
+          this.clear()
           return Maybe.of(new TorrentMessages.Bitfield(bitfieldBuffer))
       case 6 :
           const indexRequest = chunk.readInt32BE(5)
           const beginRequest = chunk.readInt32BE(9)
           const lengthRequest = chunk.readInt32BE(13)
-          logger.verbose("Request : Index = " + indexRequest + " Begin : " + beginRequest + " Length : " + lengthRequest)
+          console.log("Request : Index = " + indexRequest + " Begin : " + beginRequest + " Length : " + lengthRequest)
           this.emit("request", indexRequest, beginRequest, lengthRequest)
           return Maybe.of(new TorrentMessages.Request(indexRequest, beginRequest, lengthRequest))
       case 7 :
           const indexPiece = chunk.readInt32BE(5)
           const beginPiece = chunk.readInt32BE(9)
           const block = chunk.slice(13)
-          logger.verbose(`Piece : Index = " + ${indexPiece} + " Begin : " + ${beginPiece} + " Length : ${chunk.length - 13}`)
+          console.log(`Piece : Index = " + ${indexPiece} + " Begin : " + ${beginPiece} + " Length : ${chunk.length - 13}`)
           this.emit("piece", indexPiece, beginPiece, block)
           return Maybe.of(new TorrentMessages.Piece(indexPiece, beginPiece, block))
      case 8 :
           const indexCancel = chunk.readInt32BE(5)
           const beginCancel = chunk.readInt32BE(9)
           const lengthCancel = chunk.readInt32BE(13)
-          logger.verbose("Cancel : Index = " + indexCancel + " Begin : " + beginCancel + " Length : " + lengthCancel)
+          console.log("Cancel : Index = " + indexCancel + " Begin : " + beginCancel + " Length : " + lengthCancel)
           this.emit("cancel", indexCancel, beginCancel, lengthCancel)
           return Maybe.of(new TorrentMessages.Cancel(indexCancel, beginCancel, lengthCancel))
       default :
-          logger.verbose("Message ID ("+messageID+") cannot be parsed")
+          console.log("Message ID ("+messageID+") cannot be parsed")
           return Maybe.None() 
     }
   }

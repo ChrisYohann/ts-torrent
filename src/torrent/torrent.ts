@@ -152,6 +152,7 @@ export class Torrent extends EventEmitter {
         })
         peer.on(INVALID_PEER, () => {
             logger.verbose(`Error while creating connection with ${host}. Aborting.`)
+            this.activePeers = R.filter((otherPeer: Peer) => otherPeer !== peer, this.activePeers)
             this.connectToNewPeers()
         })
     }
