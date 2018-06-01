@@ -6,7 +6,7 @@ import * as util from 'util'
 import * as BencodeUtils from '../bencode/utils'
 import { BencodeToken, BencodeDict} from '../bencode/types'
 import { Tracker, TrackerResponse } from './tracker'
-import { Torrent } from '../Torrent/torrent';
+import { Torrent } from '../torrent/torrent';
 import * as axios from 'axios'
 import { Either, Left, Right } from 'monet';
 import * as R from 'ramda'
