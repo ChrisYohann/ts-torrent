@@ -1,7 +1,7 @@
 import * as R from 'ramda'
 import * as _ from 'underscore'
 import { Peer } from './peer'
-import { Torrent } from '../Torrent/torrent'
+import { Torrent } from '../torrent/torrent'
 import { logger } from '../logging/logger';
 const MAX_NB_PIECES_BY_PEER = 3 
 

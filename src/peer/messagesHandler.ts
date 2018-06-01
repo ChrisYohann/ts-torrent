@@ -186,6 +186,7 @@ export default class MessagesHandler extends EventEmitter{
           const beginRequest = chunk.readInt32BE(9)
           const lengthRequest = chunk.readInt32BE(13)
           console.log("Request : Index = " + indexRequest + " Begin : " + beginRequest + " Length : " + lengthRequest)
+          this.clear()
           this.emit("request", indexRequest, beginRequest, lengthRequest)
           return Maybe.of(new TorrentMessages.Request(indexRequest, beginRequest, lengthRequest))
       case 7 :
@@ -193,6 +194,7 @@ export default class MessagesHandler extends EventEmitter{
           const beginPiece = chunk.readInt32BE(9)
           const block = chunk.slice(13)
           console.log(`Piece : Index = " + ${indexPiece} + " Begin : " + ${beginPiece} + " Length : ${chunk.length - 13}`)
+          this.clear()
           this.emit("piece", indexPiece, beginPiece, block)
           return Maybe.of(new TorrentMessages.Piece(indexPiece, beginPiece, block))
      case 8 :
@@ -200,10 +202,12 @@ export default class MessagesHandler extends EventEmitter{
           const beginCancel = chunk.readInt32BE(9)
           const lengthCancel = chunk.readInt32BE(13)
           console.log("Cancel : Index = " + indexCancel + " Begin : " + beginCancel + " Length : " + lengthCancel)
+          this.clear()
           this.emit("cancel", indexCancel, beginCancel, lengthCancel)
           return Maybe.of(new TorrentMessages.Cancel(indexCancel, beginCancel, lengthCancel))
       default :
           console.log("Message ID ("+messageID+") cannot be parsed")
+          this.clear()
           return Maybe.None() 
     }
   }

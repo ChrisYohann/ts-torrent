@@ -18,7 +18,7 @@ import {
     KeepAlive
 } from './torrentMessages'
 import { Socket, createConnection } from 'net'
-import { Torrent } from '../Torrent/torrent'
+import { Torrent } from '../torrent/torrent'
 import { logger } from '../logging/logger'
 import { INVALID_PEER, PEER_ID_RECEIVED, CONNECTION_SUCCESSFUL } from '../events/events'
 import { randomBytes } from 'crypto'

@@ -8,6 +8,7 @@ import { Tracker, TrackerResponse } from './tracker'
 import { Torrent } from '../torrent/torrent'
 import { resolve } from 'path'
 import { Either, Left, Right } from 'monet'
+import { AddressInfo } from 'net'
 
 const compact2string = require('compact2string')
 
@@ -51,8 +52,14 @@ export class UDPTracker extends Tracker {
       const server = dgram.createSocket('udp4')
       
       server.on('listening', () => {
-        const address = server.address()
-        logger.verbose(`Server listening ${address.address}:${address.port}`)
+        const serverAddress: AddressInfo | string = server.address()
+        if (serverAddress instanceof String){
+          logger.verbose(`Server listening ${serverAddress}`)
+        } else {
+          const {address, port} = <AddressInfo> serverAddress
+          logger.verbose(`Server listening ${address}:${port}`)
+        }
+        
         this.server = server
         this.isServerBound = true
         resolve()
@@ -68,7 +75,7 @@ export class UDPTracker extends Tracker {
     }
     return new Promise((resolve: (value: TrackerResponse) => void, reject) => {
       this.server.removeAllListeners('message')
-      this.server.on('message', (message: Buffer, remote: dgram.AddressInfo) => {
+      this.server.on('message', (message: Buffer, remote: dgram.RemoteInfo) => {
       logger.debug('Message received from : '+remote.address + ':' + remote.port)
       logger.debug(message.toString('hex'))
       if(message.length < 4){
