@@ -20,7 +20,7 @@ import {
 import { Socket, createConnection } from 'net'
 import { Torrent } from '../torrent/torrent'
 import { logger } from '../logging/logger'
-import { INVALID_PEER, PEER_ID_RECEIVED, CONNECTION_SUCCESSFUL } from '../events/events'
+import { INVALID_PEER, PEER_ID_RECEIVED, CONNECTION_SUCCESSFUL, HAVE } from '../events/events'
 import { randomBytes } from 'crypto'
 import * as Handshake from '../peer/handshake'
 
@@ -74,19 +74,18 @@ export class Peer extends EventEmitter {
         this.nbPiecesCurrentlyDownloading = 0
 
         this.peer_bitfield = null
-        //this.messageParser = peerId ? new MessagesHandler() : new MessagesHandler(true)
 
-        logger.verbose(`Is instance of initiate connection ${'host' in params}`)
         if (instanceOfInitiateConnectionParams(params)){
             const socket = new Socket()
             
             this.messageParser = new MessagesHandler(torrent.infoHash, true)
             this.messageParser.on(PEER_ID_RECEIVED, (peerId: Buffer) => {
                 this.peerId = peerId
+                this.remoteAddress = socket.remoteAddress
                 this.emit(CONNECTION_SUCCESSFUL)
             })
-            this.messageParser.on(INVALID_PEER, () => {
-                this.emit(INVALID_PEER)
+            this.messageParser.on(INVALID_PEER, (err: Error) => {
+                this.emit(INVALID_PEER, err)
                 socket.end()
             })
             this.initListeners()
@@ -94,15 +93,14 @@ export class Peer extends EventEmitter {
             const timer = setTimeout(() => {
                 logger.verbose(`Timeout of 10 seconds exceeded. Aborting Connection.`)
                 socket.destroy()
-                this.emit(INVALID_PEER)
+                this.emit(INVALID_PEER, new Error('Timeout Excedeed'))
             }, 3000)
 
             const { host, port } = params
             logger.verbose(`Connecting to ${host} at port ${port} for ${torrent.name}`)
             socket.on('error', (err: Error) => {
-                logger.error(err.message)
                 socket.destroy()
-                this.emit(INVALID_PEER)
+                this.emit(INVALID_PEER, err)
             })
 
             socket.connect(params, () => {
@@ -114,7 +112,7 @@ export class Peer extends EventEmitter {
                 })
 
                 socket.on('data', (data: Buffer) => {
-                    logger.verbose(`Received ${data.length} bytes from ${socket.remoteAddress}`)
+                    //logger.verbose(`Received ${data.length} bytes from ${socket.remoteAddress}`)
                     this.messageParser.parse(data)
                 })
                 const handshake: Buffer = Handshake.build(torrent.infoHash, randomBytes(20))
@@ -122,6 +120,10 @@ export class Peer extends EventEmitter {
                 logger.verbose(`Handshake : ${handshake.toString('hex')}`)
                 socket.write(handshake, 'utf8', () => {
                 logger.verbose(`Handshake sent to ${socket.remoteAddress}`)
+                })
+
+                socket.on('end', () => {
+                    
                 })
             })  
         }
@@ -237,6 +239,7 @@ export class Peer extends EventEmitter {
             else
                 return createBlockRequests(self.torrent.pieceLength, Math.min(blockLength, self.torrent.pieceLength))
         })(isLastPiece)
+        logger.verbose(`Requests Messages : ${blockRequests.length}`)
         const requests = R.map((block: {begin: number, length: number}) => {
             return new Request(pieceIndex, block.begin, block.length)
         })(blockRequests)
@@ -285,6 +288,7 @@ export class Peer extends EventEmitter {
         if(!this.torrent.containsPiece(index)){
             const isPieceCompleted: boolean = await this.torrent.write(index, begin, block)
             if (isPieceCompleted){
+                this.emit(HAVE, index)
                 this.nbPiecesCurrentlyDownloading -= 1
             }
         }
@@ -297,6 +301,7 @@ export class Peer extends EventEmitter {
 }
 
 const createBlockRequests = (pieceLength: number, blockLength: number): {begin: number, length: number}[] => {
+    logger.debug(`Piece Length : ${pieceLength}, block Length : ${blockLength}`)
     const beginValues = _.range(0, pieceLength, blockLength)
     const blockValues = _.map(beginValues, (blockBegin, index) => {
         if (index == beginValues.length - 1)

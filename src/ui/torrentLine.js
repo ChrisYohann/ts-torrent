@@ -13,17 +13,18 @@ export class TorrentLine {
     constructor(torrent){
         console.log('Creating TorrentLine')
         this.torrent = torrent
-        this.downloadedAmountFromLastSecond = 0
+        this.amountDownloaded1SecondAgo = 0
     }
 
     getContent(){
-        this.downloadedAmountFromLastSecond = this.torrent.completed - this.downloadedAmountFromLastSecond
+        const delta = this.torrent.completed - this.amountDownloaded1SecondAgo
+        this.amountDownloaded1SecondAgo = this.torrent.completed
         const result = new Line()
             .padding(4)
             .column(this.torrent.name,  Math.ceil(0.25*NB_COLUMNS))
             .column(new Progress(Math.ceil(0.20*NB_COLUMNS)).update(this.torrent.completed, this.torrent.size))
-            .column(`${sizeFormatter(this.downloadedAmountFromLastSecond)}/s`, Math.ceil(0.15*NB_COLUMNS))
-            .column(`${this.torrent.activePeers.length}`, Math.ceil(0.15*NB_COLUMNS))
+            .column(`${sizeFormatter(delta)}/s`, Math.ceil(0.15*NB_COLUMNS))
+            .column(`${delta}`, Math.ceil(0.15*NB_COLUMNS))
             .fill()
         return result
     }

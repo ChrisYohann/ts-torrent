@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Torrent } from './Torrent/torrent'
+import { Torrent } from './torrent/torrent'
 import { 
   MANAGER_TORRENT_ADDED,
   MANAGER_TORRENT_DELETED,

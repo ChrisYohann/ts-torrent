@@ -36,6 +36,11 @@ export class UI extends EventEmitter {
         this.initAppListeners()
         keypress(process.stdin)
         process.stdin.on('keypress', self.keypressListenerCallBack.bind(self))
+        this.refresh = setInterval(() => {
+            if (this.mode === ESCAPE_MODE || this.mode === FOCUS_MODE){
+                this.drawInterface()
+            }
+        }, 1000)
     }
 
     initAppListeners() {
@@ -45,7 +50,6 @@ export class UI extends EventEmitter {
     }
 
     drawInterface() {
-        this.mode = ESCAPE_MODE
         this.cursorPosition = 0 
         process.stdout.write(clc.reset)
     
@@ -61,11 +65,16 @@ export class UI extends EventEmitter {
         process.stdin.setRawMode(true)
         process.stdin.resume()
         process.stdin.setEncoding("utf8")
+
+        if(this.mode == FOCUS_MODE){
+            addFocus.call(this)
+        }
+
     }
 
     keypressListenerCallBack(ch, key){
-        logger.debug(`${key.ctrl?"CTRL+":""}${key.name} pressed in ${this.mode} mode.`)
           if(key){
+              logger.debug(`${key.ctrl?"CTRL+":""}${key.name} pressed in ${this.mode} mode.`)
               switch(key.name){
                   case 'up' :
                       if(this.mode == ESCAPE_MODE && this.content.length > 0){

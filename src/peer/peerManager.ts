@@ -3,7 +3,7 @@ import * as _ from 'underscore'
 import { Peer } from './peer'
 import { Torrent } from '../torrent/torrent'
 import { logger } from '../logging/logger';
-const MAX_NB_PIECES_BY_PEER = 3 
+const MAX_NB_PIECES_BY_PEER = 1 
 
 export type PieceWithCount = {pieceIndex: number, count: number}
 
@@ -43,6 +43,9 @@ const preparePiecesRequests = (nbPieces: number) => (peers: Peer[], nonRequested
     let rarestPieces: PieceWithCount[] = getRarestPieces(minOccurency)(piecesToRequest)
     let remainingActivePeers: Peer[] = computeRemainingActivePeers(peers)
 
+    logger.debug(`Rarest pieces length : ${rarestPieces.length}`)
+    logger.debug(`Active Peers available : ${remainingActivePeers.length}`)
+
     while(remainingActivePeers.length > 0 && rarestPieces.length > 0){
         const firstPiece = rarestPieces.shift()
         const pieceIndex = firstPiece.pieceIndex
@@ -63,17 +66,20 @@ const preparePiecesRequests = (nbPieces: number) => (peers: Peer[], nonRequested
 }
 
 const choosePeerToRequestPiece = (pieceIndex: number, peers: Peer[]): Peer => {
+    logger.debug(`Choosing Peer to request Piece ${pieceIndex}. Possible peers : ${peers.length}`)
     let self = this
     if (peers.length == 0) return null
 
     const shuffled_peers: Peer[] = _.shuffle(peers)
     const peer: Peer = shuffled_peers.shift()
-    const ensurePeerContainsPiece = (peer: Peer) => {return peer.containsPiece(pieceIndex)}
-    const ensurePeerIsNotChokingUS = (peer: Peer) => {return peer.peer_choking}
+    const ensurePeerContainsPiece = (peer: Peer) => peer.containsPiece(pieceIndex)
+    const ensurePeerIsNotChokingUS = (peer: Peer) => !peer.peer_choking
     const result = _.every([ensurePeerContainsPiece, ensurePeerIsNotChokingUS], (func) => {return func(peer)})
     if(result){
+        logger.debug('Found Peer')
         return peer
     } else {
+        logger.debug('Peer not found. Retrying.')
         return choosePeerToRequestPiece(pieceIndex, shuffled_peers)
     }
 }
@@ -81,9 +87,11 @@ const choosePeerToRequestPiece = (pieceIndex: number, peers: Peer[]): Peer => {
 export const askPeersForPieces = (torrent: Torrent) => {
     return function* (){
         while (!torrent.isCompleted()){
+            logger.verbose(`Looking for pieces to ask to Peers...`)
             const peers: Peer[] = torrent.activePeers
             const nbPieces = torrent.nbPieces
             const nonRequestedPieces: number[] = getNonRequestedPieces(torrent)
+            logger.verbose(`Nb Pieces to requests : ${nonRequestedPieces.length}`)
             const requests: {peer: Peer, pieceIndex: number}[] = preparePiecesRequests(nbPieces)(peers, nonRequestedPieces)
             R.forEach((request: {peer: Peer, pieceIndex: number}) => {
                 logger.verbose(`Peer ${request.peer.socket.remoteAddress} ; piece Index : ${request.pieceIndex}`)

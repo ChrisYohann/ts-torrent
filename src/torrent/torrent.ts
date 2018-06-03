@@ -17,11 +17,12 @@ import { Maybe } from 'monet'
 import * as path from 'path'
 import * as _ from 'underscore'
 import { createHash, Hash, randomBytes } from 'crypto'
-import { CONNECTION_SUCCESSFUL, INVALID_PEER } from '../events/events'
+import { CONNECTION_SUCCESSFUL, INVALID_PEER, HAVE, PEER_DISCONNECTED} from '../events/events'
+import * as async from 'async'
 
 const udpAddressRegex = /^(udp:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
 const httpAddressRegex = /^(http:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
-const MAX_ACTIVE_PEERS = 1 ;
+const MAX_ACTIVE_PEERS = 5 ;
 
 export class Torrent extends EventEmitter {
     metadata: TorrentDict
@@ -73,6 +74,8 @@ export class Torrent extends EventEmitter {
                 this.completed = completed
                 this.bitfield = bitfield
                 this.nbPieces = this.disk.infoDictionary.nbPieces
+                this.pieceLength = this.disk.infoDictionary.piece_length
+                this.size = this.disk.infoDictionary.computeTotalSize()
             })
     }
 
@@ -85,24 +88,17 @@ export class Torrent extends EventEmitter {
                 this.activeTracker = maybeTracker.some()
                 try {
                     const response: TrackerResponse = await this.activeTracker.announce('started')
-                if(!this.isCompleted()){
-                    const { peers } = response
-                    this.lastKnownPeers = R.map((peerAddress: string) => {
-                        const [host, portAsString]: [string, string] = peerAddress.split(':') as [string, string]
-                        const port: number = parseInt(portAsString)
-                        return { host, port }
-                    })(_.shuffle(peers))
+                    if(!this.isCompleted()){
+                        const { peers } = response
+                        this.lastKnownPeers = R.map((peerAddress: string) => {
+                            const [host, portAsString]: [string, string] = peerAddress.split(':') as [string, string]
+                            const port: number = parseInt(portAsString)
+                            return { host, port }
+                        })(_.shuffle(peers))
                     
-                    logger.verbose(`First 5 Peers : ${JSON.stringify(R.take(5, this.lastKnownPeers))}`)
-                    this.connectToNewPeers()
-                } 
-                    this.on(events.HAVE, (index: number) => {
-                        this.askedPieces = R.remove(
-                            R.indexOf(index)(this.askedPieces),
-                            1,
-                            this.askedPieces)
-                    this.lookForNewPieces()
-                })
+                        logger.verbose(`First 5 Peers : ${JSON.stringify(R.take(5, this.lastKnownPeers))}`)
+                        this.connectToNewPeers()
+                    } 
                 } catch (err){
                     logger.error('Error while attempting to send a request to the tracker. Trying next on the list.')
                     logger.error(err.message)
@@ -135,31 +131,53 @@ export class Torrent extends EventEmitter {
 
         const newPeersToConnect: {host: string; port: number}[] = R.take(nbPeersToAdd, notAlreadyConnectedPeers)
         this.lastKnownPeers = R.slice(nbPeersToAdd, Infinity, notAlreadyConnectedPeers)
-        R.forEach(({host, port}) => {
+        async.each(newPeersToConnect, ({host, port}, callback) => {
             this.getPeer(this, host, port)
-        })(newPeersToConnect)
-        
+            callback()
+        })
     }
 
     getPeer(torrent: Torrent, host: string, port: number): void {
         const peer: Peer = new Peer(torrent, {host, port})
         
         peer.on(CONNECTION_SUCCESSFUL, () => {
-            logger.verbose(`Successfully connected to ${host} for torrent ${torrent.name}`)
+            const remoteHost = host
+            logger.verbose(`Successfully connected to ${remoteHost} for torrent ${torrent.name}`)
             this.activePeers = R.append(peer, this.activePeers)
             peer.start()
             this.lookForNewPieces()
+            peer.on('unchoked', () => this.lookForNewPieces())
         })
-        peer.on(INVALID_PEER, () => {
-            logger.verbose(`Error while creating connection with ${host}. Aborting.`)
+        peer.on(INVALID_PEER, (err) => {
+            const remoteHost = host
+            logger.verbose(`Error while creating connection with ${remoteHost} : ${err.message}`)
             this.activePeers = R.filter((otherPeer: Peer) => otherPeer !== peer, this.activePeers)
             this.connectToNewPeers()
+        })
+
+        peer.on(PEER_DISCONNECTED, () => {
+            const remoteHost = host
+            logger.verbose(`Connection with ${host} lost.`)
+            this.activePeers = R.filter((otherPeer: Peer) => otherPeer !== peer, this.activePeers)
+            this.connectToNewPeers()
+        })
+
+        peer.on(HAVE, (index: number) => {
+            peer.nbPiecesCurrentlyDownloading -= 1
+            this.askedPieces = R.remove(
+                R.indexOf(index)(this.askedPieces),
+                1,
+                this.askedPieces)
+            this.lookForNewPieces()
         })
     }
 
     lookForNewPieces(): void {
+        logger.verbose('Looking for new Pieces to Request')
         const {value, done} = this.pieceRequestGenerator.next()
-        logger.verbose(`${{value, done}}`)
+        if(value){
+            logger.debug(`Nb Requests : ${value.length}`)
+        }
         if (!done){
             R.forEach(({peer, pieceIndex}: {peer: Peer, pieceIndex: number}) => {
                 peer.sendRequest(pieceIndex)
@@ -198,9 +216,6 @@ export class Torrent extends EventEmitter {
     async write(index: number, begin: number, block: Buffer){
         const {bytesWritten, isPieceCompletedAndValid} = await this.disk.write(index, begin, block)
         this.completed += bytesWritten
-        if(isPieceCompletedAndValid){
-            this.emit(events.HAVE, index)
-        }
         return isPieceCompletedAndValid
     }
 }

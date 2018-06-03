@@ -245,6 +245,7 @@ export default class TorrentDisk {
                 completed += pieces[pieceIndex].length
             }
         })
+        this.bitfield = bitFieldBuffer
         logger.info(JSON.stringify({name : this.infoDictionary.name, completed}))
         return { bitfield: bitFieldBuffer, completed }
         

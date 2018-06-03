@@ -4,6 +4,7 @@ export const PEER_ADDED_TORRENT: string = 'peerAdded'
 export const INVALID_PEER: string = 'invalidPeer'
 export const PEER_ID_RECEIVED: string = 'peerId'
 export const CONNECTION_SUCCESSFUL: string = 'connectionSuccess'
+export const PEER_DISCONNECTED: string = 'peerDisconnected'
 
 export const MANAGER_TORRENT_ADDED: string = 'torrentAdded'
 export const MANAGER_TORRENT_DELETED: string = 'torrentDeleted'
