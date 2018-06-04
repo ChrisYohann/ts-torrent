@@ -24,7 +24,7 @@ export class TorrentLine {
             .column(this.torrent.name,  Math.ceil(0.25*NB_COLUMNS))
             .column(new Progress(Math.ceil(0.20*NB_COLUMNS)).update(this.torrent.completed, this.torrent.size))
             .column(`${sizeFormatter(delta)}/s`, Math.ceil(0.15*NB_COLUMNS))
-            .column(`${delta}`, Math.ceil(0.15*NB_COLUMNS))
+            .column(`${sizeFormatter(this.torrent.completed)}/${sizeFormatter(this.torrent.size)}`, Math.ceil(0.15*NB_COLUMNS))
             .fill()
         return result
     }

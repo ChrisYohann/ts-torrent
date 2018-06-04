@@ -172,12 +172,11 @@ export const decode = (data: string|Buffer, encoding?: string): Either<Error, Be
         if (Buffer.isBuffer(data)){
             return data
         } else {
-            Buffer.from(data)
+            Buffer.from(data, encoding)
         }
     })()
     const endOfStreamValidator: (eitherToken: [BencodeToken, PositionIncrement])=> Either<Error, BencodeToken> = validateEndOfStreamFunctor(data)
     let string_length: string = "";
-    
     if(data.length == 0){
         return Left(new Error("No data to read from"))
     }

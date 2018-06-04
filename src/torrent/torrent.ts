@@ -22,7 +22,7 @@ import * as async from 'async'
 
 const udpAddressRegex = /^(udp:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
 const httpAddressRegex = /^(http:\/\/[\w.-]+):(\d{2,})[^\s]*$/g;
-const MAX_ACTIVE_PEERS = 5 ;
+const MAX_ACTIVE_PEERS = 1 ;
 
 export class Torrent extends EventEmitter {
     metadata: TorrentDict
@@ -45,7 +45,7 @@ export class Torrent extends EventEmitter {
     port: number
     lastKnownPeers: {host: string; port: number}[]
     activePeers: Peer[] = []
-    actualTrackerIndex: number = 1
+    actualTrackerIndex: number = 0
     activeTracker: Tracker
     trackers: string[]
     
@@ -54,9 +54,7 @@ export class Torrent extends EventEmitter {
 
     constructor(meta: TorrentDict, filepath: string){
         super()
-
         const sha1Hash: Hash = createHash('sha1')
-
         this.metadata = meta
         this.name = meta.info.name
         this.filepath = filepath
@@ -65,6 +63,11 @@ export class Torrent extends EventEmitter {
         this.disk = new TorrentDisk(meta, path.dirname(filepath))
         this.pieceRequestGenerator = PeerManager.askPeersForPieces(this)()
         this.askedPieces = []
+    }
+
+
+    start(){
+        this.init().then(() => this.getPeersFromTrackers('started'))
     }
 
     async init(){
@@ -79,8 +82,9 @@ export class Torrent extends EventEmitter {
             })
     }
 
-    async start(){
-        if(this.trackers.length <= 0){
+    async getPeersFromTrackers(event: string){
+        logger.verbose(`Trackers : ${JSON.stringify(this.trackers)}. Actual Index : ${this.actualTrackerIndex}`)
+        if(this.trackers.length <= 0 || this.actualTrackerIndex >= this.trackers.length){
             logger.error('No valid tracker found. Aborting.');
         } else {
             const maybeTracker: Maybe<Tracker> = this.getHTTPorUDPTracker(this.trackers[this.actualTrackerIndex])
@@ -103,12 +107,12 @@ export class Torrent extends EventEmitter {
                     logger.error('Error while attempting to send a request to the tracker. Trying next on the list.')
                     logger.error(err.message)
                     this.actualTrackerIndex += 1
-                    //this.start()
+                    this.getPeersFromTrackers(event)
                 }   
             } else {
                 logger.error('Error while parsing Tracker address. Trying next on the list')
                 this.actualTrackerIndex += 1
-                this.start()
+                this.getPeersFromTrackers(event)
             } 
         }
     }

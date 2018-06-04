@@ -25,14 +25,19 @@ export class HTTPTracker extends Tracker {
             http.get(httpRequest, (response) => {
                 logger.verbose('Response Status Code : ' + response.statusCode);
                 logger.verbose('Response Status Message : ' + response.statusMessage);
-                let responseBody = '';
+                let data: Buffer [] = [];
         
                 response.on('data',  (chunk) => {
-                    responseBody += chunk
+                    if (chunk instanceof Buffer){
+                        data.push(chunk)
+                    } else {
+                        data.push(Buffer.from(chunk))
+                    }
+                    
                 });
         
                 response.on('end',  () => {
-                    const bufferedData = Buffer.from(responseBody);
+                    const bufferedData = Buffer.concat(data);
                     BencodeUtils.decode(bufferedData).cata(
                         (err: Error) => {
                             logger.error('Unable to parse response from tracker. Aborting')
@@ -50,6 +55,7 @@ export class HTTPTracker extends Tracker {
                                 } else {
                                     logger.verbose('FAILURE REASON');
                                     logger.verbose(JSON.stringify(bencodedResponse));
+                                    reject(new Error(JSON.stringify(bencodedResponse)))
                                 }
                             }
                         }
